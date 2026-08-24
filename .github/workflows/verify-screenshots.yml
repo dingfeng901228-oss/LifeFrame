@@ -31,7 +31,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # bumped 20 -> 22: GH Actions deprecating Node 20 on runners (Sep 2025);
+          # also matches the default runner behavior so upload-artifact and
+          # boot/start steps use the same effective Node version.
+          node-version: '22'
           cache: 'npm'
 
       - name: Install deps

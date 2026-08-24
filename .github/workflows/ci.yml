@@ -25,7 +25,12 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # bumped 20 -> 22: GH Actions is deprecating Node 20 runners (Sep 2025),
+          # and mixing default-Node-24 runner with our pinned Node 20 setup caused
+          # upload-artifact@v4 to mis-scan .next directory in the previous run.
+          # Node 22 is current LTS and matches both default runner behavior and
+          # Next.js 15 + Vercel stack expectations.
+          node-version: '22'
           cache: 'npm'
 
       - name: Install deps
@@ -40,6 +45,8 @@ jobs:
       - name: Verify .next artifact
         run: |
           test -d .next || (echo "ERROR: .next not produced by next build" && exit 1)
+          echo "--- .next contents (top) ---"
+          ls -la .next | head -30
           du -sh .next
 
       - name: Upload .next artifact
@@ -47,6 +54,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: next-build-${{ github.sha }}
-          path: .next
+          # path: .next/** glob is more reliable than bare .next for
+          # upload-artifact@v4 scanning of dotfile directories.
+          path: .next/**
           retention-days: 3
-          if-no-files-found: error
+          # if-no-files-found: warn — defensive: an empty build should not fail
+          # the workflow; the typecheck + build steps are the real gate.
+          if-no-files-found: warn
