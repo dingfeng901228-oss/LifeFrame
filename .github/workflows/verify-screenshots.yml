@@ -1,0 +1,84 @@
+name: verify-screenshots
+
+# Visual smoke test of the running build:
+# 1. install deps + build
+# 2. boot `next start` on port 3000 in background
+# 3. capture / and /upload via Playwright headless chromium
+# 4. upload PNGs as workflow artifacts
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: screenshots-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  screenshots:
+    name: playwright screenshot proof
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install deps
+        run: npm ci --no-audit --no-fund
+
+      - name: Build Next
+        run: npm run build
+
+      - name: Install Playwright chromium
+        run: npx playwright install chromium --with-deps
+
+      - name: Boot next start
+        run: |
+          set -e
+          nohup npm run start -- -p 3000 > /tmp/next.log 2>&1 &
+          NEXT_PID=$!
+          for i in $(seq 1 60); do
+            if curl -fsS -o /dev/null http://localhost:3000/; then
+              echo "next ready after ${i}s, pid=$NEXT_PID"
+              echo $NEXT_PID > /tmp/next.pid
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "--- next.log ---"
+          cat /tmp/next.log || true
+          exit 1
+
+      - name: Capture screenshots
+        run: node screenshot.mjs
+        env:
+          LIFEFRAME_BASE: http://localhost:3000
+
+      - name: Stop next start
+        if: always()
+        run: |
+          if [ -f /tmp/next.pid ]; then
+            kill "$(cat /tmp/next.pid)" 2>/dev/null || true
+          fi
+          pkill -f "next-server" 2>/dev/null || true
+          pkill -f "next start"  2>/dev/null || true
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-${{ github.sha }}
+          path: screenshots
+          retention-days: 7
+          if-no-files-found: warn

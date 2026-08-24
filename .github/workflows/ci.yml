@@ -1,0 +1,52 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: typecheck & build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install deps
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify .next artifact
+        run: |
+          test -d .next || (echo "ERROR: .next not produced by next build" && exit 1)
+          du -sh .next
+
+      - name: Upload .next artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: next-build-${{ github.sha }}
+          path: .next
+          retention-days: 3
+          if-no-files-found: error
