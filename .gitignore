@@ -16,3 +16,6 @@ next-env.d.ts
 # 任何包含 R2 / Supabase / Cloudflare 凭据的本地草稿、临时导出避免误提交
 secrets/
 credentials/
+
+.git-backups/
+
