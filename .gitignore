@@ -9,3 +9,10 @@ out/
 .vercel
 .turbo
 next-env.d.ts
+
+# screenshots/ 已经在初始 commit 里跟证据用 ─── 取消注释这个 if you don't want them tracked
+# screenshots/
+
+# 任何包含 R2 / Supabase / Cloudflare 凭据的本地草稿、临时导出避免误提交
+secrets/
+credentials/
