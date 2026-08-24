@@ -1,0 +1,32 @@
+#!/usr/bin/env sh
+# Pre-commit gate: keep secrets out of the repo.
+# Blocks both file-path and content-pattern attempts to push real credentials.
+
+set -e
+
+# 1. Path-based block: refuse to stage/commit .env / secrets / credentials.
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR)
+
+if printf '%s\n' "$STAGED" | grep -E '(^|/)\.env$|(^|/)\.env\.[A-Za-z_.-]+$|(^|/)secrets?/|(^|/)credentials?/' >/dev/null 2>&1; then
+  printf '%s\n' \
+    "pre-commit: refusing .env / secrets / credentials file." \
+    "This guard exists because real R2 + Supabase credentials once landed" \
+    "in .env.example and were force-pushed to the public repo." \
+    "Real values only ever live in .env.local (which is .gitignored)." \
+    "Bypass only via: git commit --no-verify"
+  exit 1
+fi
+
+# 2. Content pattern gate: catch staged diffs that look like real credentials.
+#    Heuristic: lines being added that match common KEY=longvalue shapes.
+if git diff --cached --diff-filter=ACMR -U0 2>/dev/null \
+     | grep -E '^\+[^+]*(R2_(SECRET_)?ACCESS_KEY|R2_SECRET|(SUPABASE_)?SERVICE_ROLE(_KEY)?|aws_secret_access_key|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{20,}|sk-(live|test)_[A-Za-z0-9]{20,}|xox[abprs]-[A-Za-z0-9-]{10,})[[:space:]]*[:=][[:space:]]*[A-Za-z0-9+/=._-]{20,}' \
+     >/dev/null 2>&1; then
+  printf '%s\n' \
+    "pre-commit: staged content matches a known credential-key shape." \
+    "If this is intentional, rotate the credential and commit without the value." \
+    "Bypass only via: git commit --no-verify"
+  exit 1
+fi
+
+exit 0
