@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+html,
+body {
+  height: 100%;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    "Helvetica Neue",
+    "Noto Sans SC",
+    "Hiragino Sans",
+    sans-serif;
+}
+
+body {
+  background: #000;
+  color: #fff;
+}
+
+canvas {
+  outline: none;
+}
