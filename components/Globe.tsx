@@ -3,18 +3,33 @@
 import createGlobe from 'cobe';
 import { useEffect, useRef } from 'react';
 
-type Marker = { location: [number, number]; size?: number };
+export type GlobeMarker = {
+  location: [number, number];
+  size?: number;
+};
 
-export function Globe({ markers = [] }: { markers?: Marker[] } = {}) {
+type Props = {
+  markers?: GlobeMarker[];
+  onMarkerSelect?: (index: number) => void;
+};
+
+// Click within this angular distance of a marker's lat/lng fires the callback.
+const MARKER_HIT_THRESHOLD_DEG = 6;
+
+export function Globe({ markers = [], onMarkerSelect }: Props = {}) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // Live camera state, updated each onRender frame so click hit-tests match what's on screen.
+  const phiRef = useRef(0);
+  const thetaRef = useRef(0.25);
+  // Keep latest callback without re-binding the click handler each render.
+  const onSelectRef = useRef(onMarkerSelect);
+  onSelectRef.current = onMarkerSelect;
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    let phi = 0;
     let width = 0;
-
     const onResize = () => {
       if (canvas) width = canvas.offsetWidth;
     };
@@ -39,15 +54,77 @@ export function Globe({ markers = [] }: { markers?: Marker[] } = {}) {
         size: m.size ?? 0.05,
       })),
       onRender: (state) => {
-        state.phi = phi;
-        phi += 0.005;
+        state.phi = phiRef.current;
+        phiRef.current += 0.005;
         state.width = width * 2;
+        thetaRef.current = state.theta;
       },
     });
+
+    const handleClick = (e: MouseEvent) => {
+      const cb = onSelectRef.current;
+      if (!cb || markers.length === 0) return;
+      const rect = canvas.getBoundingClientRect();
+      const nx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      const ny = ((e.clientY - rect.top) / rect.height) * 2 - 1;
+      const dist2 = nx * nx + ny * ny;
+      if (dist2 > 1) return; // click outside the disc
+
+      const phi = phiRef.current;
+      const theta = thetaRef.current;
+
+      // Camera-space surface point (orthographic, +Z toward viewer).
+      const cz = Math.sqrt(1 - dist2);
+      let x = nx, y = -ny, z = cz;
+
+      // World = R_y(-phi) ∘ R_x(-theta) applied to the camera-space point.
+      // R_x(-theta): x' = x, y' = y cosθ + z sinθ, z' = -y sinθ + z cosθ
+      const tc = Math.cos(-theta);
+      const ts = Math.sin(-theta);
+      const x1 = x;
+      const y1 = tc * y - ts * z;
+      const z1 = ts * y + tc * z;
+
+      // R_y(-phi): x' = x cosφ - z sinφ, y' = y, z' = x sinφ + z cosφ
+      // (cobe's phi rotates the globe the other way, so the inverse uses +phi.)
+      const pc = Math.cos(phi);
+      const ps = Math.sin(phi);
+      const x2 = pc * x1 - ps * z1;
+      const z2 = ps * x1 + pc * z1;
+      const y2 = y1;
+
+      const latRad = Math.asin(Math.max(-1, Math.min(1, y2)));
+      const lngRad = Math.atan2(z2, x2);
+
+      // Great-circle distance to each marker; pick nearest if within threshold.
+      let bestIdx = -1;
+      let bestDist = Infinity;
+      const toRad = (deg: number) => (deg * Math.PI) / 180;
+      for (let i = 0; i < markers.length; i++) {
+        const [mlat, mlng] = markers[i].location;
+        const a =
+          Math.sin((toRad(mlat) - latRad) / 2) ** 2 +
+          Math.cos(latRad) *
+            Math.cos(toRad(mlat)) *
+            Math.sin((toRad(mlng) - lngRad) / 2) ** 2;
+        const d = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        if (d < bestDist) {
+          bestDist = d;
+          bestIdx = i;
+        }
+      }
+
+      const threshold = (MARKER_HIT_THRESHOLD_DEG * Math.PI) / 180;
+      if (bestIdx >= 0 && bestDist < threshold) {
+        cb(bestIdx);
+      }
+    };
+    canvas.addEventListener('click', handleClick);
 
     return () => {
       globe.destroy();
       window.removeEventListener('resize', onResize);
+      canvas.removeEventListener('click', handleClick);
     };
   }, [markers]);
 

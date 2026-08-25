@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Globe } from '@/components/Globe';
 import { createClient } from '@supabase/supabase-js';
 
@@ -58,20 +58,34 @@ export function HomeGallery() {
     return () => window.removeEventListener('keydown', onKey);
   }, [selected, galleryOpen]);
 
-  // Markers only need lat/lng — photos without GPS are still shown in gallery
-  const markers = photos
-    .filter((p): p is PhotoRow & { lat: number; lng: number } =>
-      p.lat != null && p.lng != null,
-    )
-    .map((p) => ({
-      location: [p.lat, p.lng] as [number, number],
-      size: 0.06,
-    }));
+  // Photos with GPS coords — both for the globe marker array and the index-aligned click handler.
+  const photosWithGps = useMemo(
+    () =>
+      photos.filter(
+        (p): p is PhotoRow & { lat: number; lng: number } =>
+          p.lat != null && p.lng != null,
+      ),
+    [photos],
+  );
+  const markers = useMemo(
+    () =>
+      photosWithGps.map((p) => ({
+        location: [p.lat, p.lng] as [number, number],
+        size: 0.06,
+      })),
+    [photosWithGps],
+  );
 
   return (
     <>
       <div className="absolute inset-0">
-        <Globe markers={markers} />
+        <Globe
+          markers={markers}
+          onMarkerSelect={(idx) => {
+            const photo = photosWithGps[idx];
+            if (photo) setSelected(photo);
+          }}
+        />
       </div>
       <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
         <p className="text-xs tracking-[0.4em] text-white/50 uppercase">
