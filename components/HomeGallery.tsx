@@ -136,15 +136,59 @@ export function HomeGallery() {
         />
       </div>
 
-      {/* Floating photo count button — opens gallery modal */}
+      {/* Top-right "view all photos" button — moved up so it never collides
+          with the Timeline at bottom-20. Bigger label so it's unmissable
+          even when the SW serves a stale bundle. */}
       {!loading && photos.length > 0 && (
         <button
           onClick={() => setGalleryOpen(true)}
-          className="pointer-events-auto fixed bottom-4 right-4 z-40 rounded-full border border-white/20 bg-black/70 px-4 py-2 text-sm text-white shadow-lg backdrop-blur-sm transition hover:bg-black/90"
-          aria-label="查看照片列表"
+          className="pointer-events-auto fixed top-20 right-4 z-40 rounded-full border border-white/30 bg-black/80 px-5 py-2.5 text-sm font-medium text-white shadow-xl backdrop-blur-sm transition hover:scale-105 hover:bg-black/95"
+          aria-label="查看所有照片"
         >
-          📷 {photos.length} 张照片
+          📷 查看全部 {photos.length} 张照片
         </button>
+      )}
+
+      {/* Recent photos strip — sits just above the Timeline. Renders
+          up to 8 most-recent uploads regardless of GPS, so the user
+          always sees a tangible result of their upload even if the
+          photos have no EXIF GPS coords (the globe shows nothing
+          for those). */}
+      {!loading && photos.length > 0 && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-[148px] z-30 px-6">
+          <div className="mx-auto flex max-w-3xl gap-2 overflow-x-auto pb-1">
+            {photos.slice(0, 8).map((p) => (
+              <button
+                key={p.key}
+                onClick={() => setSelected(p)}
+                className="pointer-events-auto relative h-14 w-14 flex-shrink-0 overflow-hidden rounded border border-white/15 bg-white/[0.03] transition hover:border-white/60"
+                title={p.filename}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={p.public_url}
+                  alt={p.filename}
+                  className="h-full w-full object-cover"
+                  loading="lazy"
+                />
+                {p.lat == null && (
+                  <span
+                    className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-amber-300/80 ring-1 ring-black/40"
+                    title="无 GPS — 不会在地球仪上显示"
+                  />
+                )}
+              </button>
+            ))}
+            {photos.length > 8 && (
+              <button
+                onClick={() => setGalleryOpen(true)}
+                className="pointer-events-auto flex h-14 w-14 flex-shrink-0 items-center justify-center rounded border border-white/15 bg-white/[0.05] text-xs text-white/70 transition hover:border-white/40 hover:text-white"
+              >
+                +{photos.length - 8}
+              </button>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Gallery modal — grid of thumbnails (shows ALL photos, not just date window) */}
