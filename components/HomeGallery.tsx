@@ -71,7 +71,7 @@ export function HomeGallery() {
     () =>
       photosWithGps.map((p) => ({
         location: [p.lat, p.lng] as [number, number],
-        size: 0.06,
+        size: 0.08,
       })),
     [photosWithGps],
   );
