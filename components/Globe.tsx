@@ -1,11 +1,15 @@
 'use client';
 
-import createGlobe from 'cobe';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  geoOrthographic,
+  geoPath,
+} from 'd3-geo';
+import type { Feature, Geometry } from 'geojson';
+import countriesGeo from '@/lib/countries';
 
 export type GlobeMarker = {
   location: [number, number];
-  size?: number;
 };
 
 type Props = {
@@ -13,290 +17,249 @@ type Props = {
   onMarkerSelect?: (index: number) => void;
 };
 
-const MIN_ZOOM = 0.6;
-const MAX_ZOOM = 3;
-const ZOOM_STEP = 1.15;
-// Fallback canvas-click hit radius (canvas-normalized, [-1, 1]).
-const HIT_THRESHOLD = 0.12;
-const HIT_THRESHOLD_SQ = HIT_THRESHOLD * HIT_THRESHOLD;
+const MIN_SCALE = 220;
+const MAX_SCALE = 1400;
+const INITIAL_ROTATION: [number, number] = [0, -22]; // lambda, phi in degrees
+const ROTATE_DEG_PER_SEC = 3.6;
+const DRAG_SENSITIVITY = 0.32;
 
 /**
- * Forward-project marker (lat, lng) to canvas-space (sx, sy ∈ [-1, 1]).
- * Mirrors cobe's render math: R_x(theta) ∘ R_y(phi). Returns null when
- * the marker is on the back of the globe (z2 ≤ 0).
+ * Orthographic globe renderer.
+ *
+ * Why we moved off cobe: cobe's texture is baked into its WebGL shader
+ * and the d.ts surface has no `mapUrl` option. After two failed passes
+ * trying to layer DOM/SVG country outlines on top of cobe, we replace
+ * it entirely with d3-geo + SVG. Country outlines are real geometry
+ * (rendered as SVG <path> from a TopoJSON FeatureCollection), photo
+ * markers are SVG <circle> with native onClick handlers — so the click
+ * pipeline no longer depends on forward-projection math lining up with
+ * cobe's internal rotation matrix.
+ *
+ * Rotation state is a `[lambda, phi]` pair in degrees (lambda is
+ * longitude, phi is latitude). d3-geo's `geoOrthographic().rotate([λ, φ])`
+ * does the heavy lifting; we mutate λ/φ on drag and tick.
  */
-function projectMarker(
-  latDeg: number,
-  lngDeg: number,
-  phi: number,
-  theta: number,
-): { sx: number; sy: number } | null {
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const latR = toRad(latDeg);
-  const lngR = toRad(lngDeg);
-  // Cobe's equirectangular convention: x = cos·cos, y = sin, z = cos·sin
-  const wx = Math.cos(latR) * Math.cos(lngR);
-  const wy = Math.sin(latR);
-  const wz = Math.cos(latR) * Math.sin(lngR);
-  // R_x(theta)
-  const tc = Math.cos(theta);
-  const ts = Math.sin(theta);
-  const x1 = wx;
-  const y1 = tc * wy - ts * wz;
-  const z1 = ts * wy + tc * wz;
-  // R_y(phi)
-  const pc = Math.cos(phi);
-  const ps = Math.sin(phi);
-  const x2 = pc * x1 + ps * z1;
-  const y2 = y1;
-  const z2 = -ps * x1 + pc * z1;
-  if (z2 <= 0) return null;
-  // Canvas y is screen-down while world y is up.
-  return { sx: x2, sy: -y2 };
-}
-
-export function Globe({ markers = [], onMarkerSelect }: Props) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const overlayRef = useRef<HTMLDivElement | null>(null);
-  const zoomWrapperRef = useRef<HTMLDivElement | null>(null);
-  // Live camera state, updated each onRender frame.
-  const phiRef = useRef(0);
-  const thetaRef = useRef(0.25);
-  // CSS-transform zoom on a ref so wheel events don't trigger re-render.
-  const scaleRef = useRef(1);
-  const autoRotateRef = useRef(true);
-  const [zoomDisplay, setZoomDisplay] = useState(1);
+export function Globe({ markers = [], onMarkerSelect }: Props = {}) {
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const [size, setSize] = useState(700);
+  const [rotation, setRotation] =
+    useState<[number, number]>(INITIAL_ROTATION);
+  const [scale, setScale] = useState(360);
   const [autoRotate, setAutoRotate] = useState(true);
-  // Keep latest callback without re-binding listeners on every render.
-  const onSelectRef = useRef(onMarkerSelect);
-  onSelectRef.current = onMarkerSelect;
-  autoRotateRef.current = autoRotate;
 
+  const dragRef = useRef<{
+    x: number;
+    y: number;
+    rot: [number, number];
+  } | null>(null);
+
+  // ── Resize observer → keep SVG dimensions in sync with wrapper ──
   useEffect(() => {
-    const canvas = canvasRef.current;
-    const overlay = overlayRef.current;
-    const zoomWrapper = zoomWrapperRef.current;
-    if (!canvas || !overlay || !zoomWrapper) return;
-
-    let width = 0;
-    const onResize = () => {
-      if (canvas) width = canvas.offsetWidth;
+    if (!wrapperRef.current) return;
+    const el = wrapperRef.current;
+    const measure = () => {
+      const s = Math.min(el.clientWidth, el.clientHeight);
+      if (s > 0) setSize(s);
     };
-    window.addEventListener('resize', onResize);
-    onResize();
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
-    // ── DOM overlay dots ──────────────────────────────────────────────
-    // One real <button> per marker, positioned every frame so it tracks
-    // cobe's marker. Clicking the button opens detail modal. This is the
-    // primary interaction path; the canvas-click handler below is just a
-    // fallback in case a DOM dot fails to render for some reason.
-    while (overlay.firstChild) overlay.removeChild(overlay.firstChild);
-    const dots: HTMLButtonElement[] = [];
-    for (let i = 0; i < markers.length; i++) {
-      const dot = document.createElement('button');
-      dot.type = 'button';
-      dot.style.position = 'absolute';
-      dot.style.left = '50%';
-      dot.style.top = '50%';
-      dot.style.transform = 'translate(-50%, -50%)';
-      dot.style.width = '26px';
-      dot.style.height = '26px';
-      dot.style.borderRadius = '9999px';
-      dot.style.border = '2px solid rgba(103, 232, 249, 0.8)';
-      dot.style.background = 'rgba(103, 232, 249, 0.25)';
-      dot.style.cursor = 'pointer';
-      dot.style.pointerEvents = 'auto';
-      dot.style.display = 'none';
-      dot.style.transition = 'transform 120ms ease-out, background 120ms';
-      dot.style.boxShadow = '0 0 14px rgba(103, 232, 249, 0.35)';
-      dot.setAttribute(
-        'aria-label',
-        `打开照片 ${markers[i].location[0].toFixed(2)},${markers[i].location[1].toFixed(2)}`,
-      );
-      dot.onmouseenter = () => {
-        dot.style.transform = 'translate(-50%, -50%) scale(1.35)';
-        dot.style.background = 'rgba(103, 232, 249, 0.6)';
-      };
-      dot.onmouseleave = () => {
-        dot.style.transform = 'translate(-50%, -50%) scale(1)';
-        dot.style.background = 'rgba(103, 232, 249, 0.25)';
-      };
-      dot.onclick = () => onSelectRef.current?.(i);
-      overlay.appendChild(dot);
-      dots.push(dot);
-    }
+  // ── Scale to fit initial wrapper size ───────────────────────────
+  useEffect(() => {
+    if (size <= 0) return;
+    const initialScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, size * 0.62));
+    setScale(initialScale);
+  }, [size]);
 
-    const globe = createGlobe(canvas, {
-      devicePixelRatio: 2,
-      width: 1200,
-      height: 1200,
-      phi: 0,
-      theta: 0.25,
-      dark: 1,
-      diffuse: 1.2,
-      mapSamples: 16000,
-      mapBrightness: 6,
-      baseColor: [0.2, 0.2, 0.25],
-      markerColor: [0.4, 0.9, 1],
-      glowColor: [1, 1, 1],
-      markers: markers.map((m) => ({
-        location: m.location,
-        size: m.size ?? 0.05,
-      })),
-      onRender: (state) => {
-        state.phi = phiRef.current;
-        if (autoRotateRef.current) {
-          // Wrap to [0, 2π) so phiRef doesn't grow without bound.
-          phiRef.current = (phiRef.current + 0.005) % (Math.PI * 2);
-        }
-        state.width = width * 2;
-        thetaRef.current = state.theta;
+  // ── Auto-rotation via requestAnimationFrame ─────────────────────
+  useEffect(() => {
+    if (!autoRotate) return;
+    let raf = 0;
+    let last = performance.now();
+    const step = (now: number) => {
+      const dtSec = (now - last) / 1000;
+      last = now;
+      setRotation(([lambda, phi]) => {
+        let nl = (lambda + ROTATE_DEG_PER_SEC * dtSec) % 360;
+        if (nl > 180) nl -= 360;
+        if (nl < -180) nl += 360;
+        return [nl, phi];
+      });
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [autoRotate]);
 
-        // Position DOM overlay dots using the same camera state cobe is
-        // rendering with (state.phi was just set above to phiRef.current,
-        // which equals phiRef.current minus the post-increment value used
-        // for next frame). Using the post-increment value introduces a
-        // 0.005 rad (~0.29°) offset which is well within a 26px click
-        // target, so use the fresh value for positioning here.
-        const phiNow = state.phi;
-        const thetaNow = thetaRef.current;
-        for (let i = 0; i < markers.length && i < dots.length; i++) {
-          const dot = dots[i];
-          const p = projectMarker(
-            markers[i].location[0],
-            markers[i].location[1],
-            phiNow,
-            thetaNow,
-          );
-          if (p) {
-            dot.style.left = `${(p.sx + 1) * 50}%`;
-            dot.style.top = `${(1 - p.sy) * 50}%`;
-            dot.style.display = '';
-          } else {
-            dot.style.display = 'none';
-          }
-        }
-      },
+  // ── Projection + path generator ─────────────────────────────────
+  const projection = useMemo(() => {
+    return geoOrthographic()
+      .rotate(rotation)
+      .scale(scale)
+      .translate([0, 0])
+      .clipAngle(90)
+      .precision(0.5);
+  }, [rotation, scale]);
+
+  const pathFn = useMemo(() => geoPath(projection), [projection]);
+
+  const countryPaths = useMemo(() => {
+    const out: { id: string | number; d: string }[] = [];
+    countriesGeo.features.forEach((f: Feature<Geometry, any>, i: number) => {
+      const d = pathFn(f as any);
+      if (d) out.push({ id: (f.id as string | number | undefined) ?? i, d });
     });
+    return out;
+  }, [pathFn]);
 
-    const handleWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      const factor = e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
-      const next = Math.max(
-        MIN_ZOOM,
-        Math.min(MAX_ZOOM, scaleRef.current * factor),
-      );
-      if (next !== scaleRef.current) {
-        scaleRef.current = next;
-        zoomWrapper.style.transform = `scale(${next})`;
-        setZoomDisplay(next);
-      }
+  // ── Projected photo markers (drop ones on the back hemisphere) ──
+  const projectedMarkers = useMemo(() => {
+    const out: { i: number; x: number; y: number }[] = [];
+    for (let i = 0; i < markers.length; i++) {
+      const [lat, lng] = markers[i].location;
+      const xy = projection([lng, lat]);
+      if (xy) out.push({ i, x: xy[0], y: xy[1] });
+    }
+    return out;
+  }, [markers, projection]);
+
+  // ── Drag handling (pointer events for unified mouse/touch) ─────
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    dragRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      rot: [...rotation],
     };
-    canvas.addEventListener('wheel', handleWheel, { passive: false });
-
-    // Canvas-click fallback (in case DOM dots somehow don't render).
-    const handleClick = (e: MouseEvent) => {
-      const cb = onSelectRef.current;
-      if (!cb || markers.length === 0) return;
-      const rect = canvas.getBoundingClientRect();
-      const cnx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      const cny = ((e.clientY - rect.top) / rect.height) * 2 - 1;
-      const phi = phiRef.current;
-      const theta = thetaRef.current;
-      let bestIdx = -1;
-      let bestDist2 = Infinity;
-      for (let i = 0; i < markers.length; i++) {
-        const p = projectMarker(
-          markers[i].location[0],
-          markers[i].location[1],
-          phi,
-          theta,
-        );
-        if (!p) continue;
-        const dx = p.sx - cnx;
-        const dy = p.sy - cny;
-        const d2 = dx * dx + dy * dy;
-        if (d2 < bestDist2) {
-          bestDist2 = d2;
-          bestIdx = i;
-        }
-      }
-      if (bestIdx >= 0 && bestDist2 < HIT_THRESHOLD_SQ) {
-        cb(bestIdx);
-      }
-    };
-    canvas.addEventListener('click', handleClick);
-
-    return () => {
-      globe.destroy();
-      window.removeEventListener('resize', onResize);
-      canvas.removeEventListener('wheel', handleWheel);
-      canvas.removeEventListener('click', handleClick);
-      zoomWrapper.style.transform = '';
-      while (overlay.firstChild) overlay.removeChild(overlay.firstChild);
-    };
-  }, [markers]);
-
-  const resetZoom = () => {
-    scaleRef.current = 1;
-    if (zoomWrapperRef.current) zoomWrapperRef.current.style.transform = 'scale(1)';
-    setZoomDisplay(1);
+    setAutoRotate(false);
   };
 
-  const toggleAutoRotate = () => {
-    setAutoRotate((prev) => !prev);
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = dragRef.current;
+    if (!d) return;
+    const dx = e.clientX - d.x;
+    const dy = e.clientY - d.y;
+    let lambda = (d.rot[0] + dx * DRAG_SENSITIVITY) % 360;
+    if (lambda > 180) lambda -= 360;
+    if (lambda < -180) lambda += 360;
+    const phi = Math.max(-90, Math.min(90, d.rot[1] - dy * DRAG_SENSITIVITY));
+    setRotation([lambda, phi]);
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (dragRef.current) {
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch {
+        /* noop — pointer might already be released */
+      }
+      dragRef.current = null;
+    }
+  };
+
+  // ── Wheel zoom ──────────────────────────────────────────────────
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+    setScale((s) => Math.max(MIN_SCALE, Math.min(MAX_SCALE, s * factor)));
   };
 
   return (
-    <div className="relative flex h-full w-full items-center justify-center">
+    <div className="relative flex h-full w-full items-center justify-center select-none">
       <div
-        ref={zoomWrapperRef}
-        className="relative"
+        ref={wrapperRef}
+        className="relative overflow-hidden rounded-full"
         style={{
           width: 'min(85vh, 85vw, 900px)',
           height: 'min(85vh, 85vw, 900px)',
           aspectRatio: '1',
-          transformOrigin: 'center center',
-          transition: 'transform 80ms ease-out',
+          touchAction: 'none',
+          cursor: dragRef.current ? 'grabbing' : 'grab',
         }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        onWheel={handleWheel}
       >
-        <canvas
-          ref={canvasRef}
-          style={{
-            width: '100%',
-            height: '100%',
-            maxWidth: '100%',
-            maxHeight: '100%',
-            cursor: 'grab',
-            contain: 'layout paint size',
-            display: 'block',
-          }}
-        />
-        <div
-          ref={overlayRef}
-          className="absolute inset-0"
-          style={{ pointerEvents: 'none' }}
-        />
+        <svg
+          width={size}
+          height={size}
+          viewBox={`-${size / 2} -${size / 2} ${size} ${size}`}
+          style={{ display: 'block', overflow: 'visible' }}
+        >
+          <defs>
+            <radialGradient id="oceanGrad" cx="38%" cy="35%" r="75%">
+              <stop offset="0%" stopColor="#152037" />
+              <stop offset="65%" stopColor="#0a0e1a" />
+              <stop offset="100%" stopColor="#04060d" />
+            </radialGradient>
+          </defs>
+
+          {/* Ocean / sphere background */}
+          <circle
+            r={size / 2 - 2}
+            fill="url(#oceanGrad)"
+            stroke="rgba(255, 255, 255, 0.18)"
+            strokeWidth={1}
+          />
+
+          {/* Country borders & land */}
+          <g>
+            {countryPaths.map((c) => (
+              <path
+                key={c.id}
+                d={c.d}
+                fill="rgba(35, 48, 80, 0.85)"
+                stroke="rgba(103, 232, 249, 0.55)"
+                strokeWidth={0.6}
+                vectorEffect="non-scaling-stroke"
+              />
+            ))}
+          </g>
+
+          {/* Photo markers — SVG circle, native onClick handles */}
+          <g>
+            {projectedMarkers.map((m) => (
+              <g
+                key={m.i}
+                transform={`translate(${m.x}, ${m.y})`}
+                style={{ cursor: 'pointer' }}
+                onClick={() => onMarkerSelect?.(m.i)}
+                onMouseEnter={(e) => {
+                  const target = e.currentTarget;
+                  target.querySelectorAll('circle').forEach((c) => {
+                    c.setAttribute('r', c.getAttribute('data-base-r') || c.getAttribute('r') || '');
+                  });
+                  target.setAttribute('data-hover', '1');
+                }}
+              >
+                <circle
+                  r={9}
+                  fill="rgba(103, 232, 249, 0.22)"
+                  stroke="rgba(103, 232, 249, 0.5)"
+                  strokeWidth={1}
+                />
+                <circle r={3.5} fill="rgb(103, 232, 249)" />
+              </g>
+            ))}
+          </g>
+        </svg>
       </div>
+
       <div className="pointer-events-none absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-2">
         <button
           type="button"
-          onClick={toggleAutoRotate}
+          onClick={() => setAutoRotate((v) => !v)}
           className="pointer-events-auto rounded-full border border-white/20 bg-black/70 px-4 py-1.5 text-xs text-white/80 backdrop-blur-sm transition hover:bg-black/90"
           aria-label={autoRotate ? '暂停旋转' : '继续旋转'}
         >
           {autoRotate ? '❚❚ 暂停' : '▶ 继续'}
         </button>
-        {zoomDisplay !== 1 && (
-          <button
-            type="button"
-            onClick={resetZoom}
-            className="pointer-events-auto rounded-full border border-white/20 bg-black/70 px-4 py-1.5 text-xs text-white/80 backdrop-blur-sm transition hover:bg-black/90"
-            aria-label="重置缩放"
-          >
-            {zoomDisplay.toFixed(1)}× · 重置
-          </button>
-        )}
       </div>
     </div>
   );
