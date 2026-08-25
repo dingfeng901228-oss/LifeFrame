@@ -100,16 +100,12 @@ export async function POST(req: Request) {
   }
 
   const signedUrl = await getR2UploadUrl(config, key, safeContentType, 300, metadata);
-
-  // Headers the client MUST send in PUT (Content-Type + any x-amz-meta-*)
-  const responseHeaders: Record<string, string> = { 'Content-Type': safeContentType };
-  for (const [k, v] of Object.entries(metadata)) {
-    responseHeaders[`x-amz-meta-${k.toLowerCase()}`] = v;
-  }
+  // Note: AWS SDK hoists x-amz-meta-* into URL query params (visible in signedUrl),
+  // so R2 applies them automatically. Client only needs PUT(url, body).
 
   const publicUrl = config.publicBase
     ? `${config.publicBase}/${key}`
     : signedUrl.split('?')[0];
 
-  return Response.json({ url: signedUrl, key, publicUrl, headers: responseHeaders });
+  return Response.json({ url: signedUrl, key, publicUrl });
 }

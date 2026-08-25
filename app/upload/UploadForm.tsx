@@ -45,18 +45,18 @@ export function UploadForm() {
         const text = await signRes.text();
         throw new Error(`signing failed (${signRes.status}): ${text}`);
       }
-      const { url, key, publicUrl, headers } = (await signRes.json()) as {
+      const { url, key, publicUrl } = (await signRes.json()) as {
         url: string;
         key: string;
         publicUrl: string;
-        headers: Record<string, string>;
       };
       setKey(key);
 
       setStatus('uploading');
+      // SDK puts x-amz-meta-* into the URL query string; R2 applies them.
+      // We only need to PUT the file body.
       const put = await fetch(url, {
         method: 'PUT',
-        headers,
         body: file,
       });
       if (!put.ok) {
