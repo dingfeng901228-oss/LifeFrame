@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import { extractExif, type PhotoExif } from '@/lib/exif';
 
 type Status = 'idle' | 'signing' | 'uploading' | 'done' | 'error';
 
@@ -11,18 +12,25 @@ export function UploadForm() {
   const [publicUrl, setPublicUrl] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [fileSize, setFileSize] = useState<number | null>(null);
+  const [exif, setExif] = useState<PhotoExif | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function onChange(e: React.ChangeEvent<HTMLInputElement>) {
     setError(null);
     setKey(null);
     setPublicUrl(null);
+    setExif(null);
     const file = e.target.files?.[0];
     if (!file) return;
     setFileName(file.name);
     setFileSize(file.size);
 
     try {
+      // Extract EXIF first (fast — reads header only) so we can include
+      // it as R2 object metadata on upload.
+      const exifData = await extractExif(file);
+      setExif(exifData);
+
       setStatus('signing');
       const signRes = await fetch('/api/upload-url', {
         method: 'POST',
@@ -30,23 +38,25 @@ export function UploadForm() {
         body: JSON.stringify({
           filename: file.name,
           contentType: file.type || 'application/octet-stream',
+          exif: exifData,
         }),
       });
       if (!signRes.ok) {
         const text = await signRes.text();
         throw new Error(`signing failed (${signRes.status}): ${text}`);
       }
-      const { url, key, publicUrl } = (await signRes.json()) as {
+      const { url, key, publicUrl, headers } = (await signRes.json()) as {
         url: string;
         key: string;
         publicUrl: string;
+        headers: Record<string, string>;
       };
       setKey(key);
 
       setStatus('uploading');
       const put = await fetch(url, {
         method: 'PUT',
-        headers: { 'Content-Type': file.type || 'application/octet-stream' },
+        headers,
         body: file,
       });
       if (!put.ok) {
@@ -69,6 +79,7 @@ export function UploadForm() {
     setPublicUrl(null);
     setFileName(null);
     setFileSize(null);
+    setExif(null);
     if (inputRef.current) inputRef.current.value = '';
   }
 
@@ -102,6 +113,19 @@ export function UploadForm() {
         )}
         {status === 'error' && <span className="text-rose-300">失败：{error}</span>}
       </div>
+
+      {exif && (exif.takenAt || exif.lat != null || exif.make || exif.model) && (
+        <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3 text-xs text-white/70">
+          <p className="mb-1 text-white/50">EXIF</p>
+          {exif.takenAt && <p>📅 {new Date(exif.takenAt).toLocaleString('zh-CN')}</p>}
+          {exif.lat != null && exif.lng != null && (
+            <p>📍 {exif.lat.toFixed(4)}, {exif.lng.toFixed(4)}</p>
+          )}
+          {(exif.make || exif.model) && (
+            <p>📷 {[exif.make, exif.model].filter(Boolean).join(' ')}</p>
+          )}
+        </div>
+      )}
 
       {publicUrl && (
         <div className="rounded-lg border border-white/10 bg-white/[0.02] p-4 text-sm">

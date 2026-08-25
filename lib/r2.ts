@@ -29,12 +29,14 @@ export async function getR2UploadUrl(
   key: string,
   contentType: string,
   expiresIn = 300,
+  metadata?: Record<string, string>,
 ): Promise<string> {
   const client = getR2Client(cfg);
   const cmd = new PutObjectCommand({
     Bucket: cfg.bucket,
     Key: key,
     ContentType: contentType,
+    ...(metadata && Object.keys(metadata).length > 0 ? { Metadata: metadata } : {}),
   });
   return getSignedUrl(client, cmd, { expiresIn });
 }

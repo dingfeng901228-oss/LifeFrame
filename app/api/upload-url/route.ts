@@ -52,9 +52,21 @@ export async function POST(req: Request) {
   }
   const { config } = ready;
 
-  let body: { filename?: unknown; contentType?: unknown };
+  type UploadRequestBody = {
+    filename?: unknown;
+    contentType?: unknown;
+    exif?: {
+      takenAt?: unknown;
+      lat?: unknown;
+      lng?: unknown;
+      make?: unknown;
+      model?: unknown;
+    };
+  };
+
+  let body: UploadRequestBody;
   try {
-    body = (await req.json()) as { filename?: unknown; contentType?: unknown };
+    body = (await req.json()) as UploadRequestBody;
   } catch {
     return Response.json({ error: 'invalid json body' }, { status: 400 });
   }
@@ -72,10 +84,32 @@ export async function POST(req: Request) {
   const date = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
   const key = `uploads/${date}/${Date.now()}-${filename}`;
 
-  const signedUrl = await getR2UploadUrl(config, key, safeContentType, 300);
+  // Build EXIF metadata for R2 object (only when client provided exif)
+  const exif = body.exif;
+  const metadata: Record<string, string> = {};
+  if (exif && typeof exif === 'object') {
+    if (typeof exif.takenAt === 'string') metadata['exif-taken-at'] = exif.takenAt;
+    if (typeof exif.lat === 'number' && Number.isFinite(exif.lat)) {
+      metadata['exif-lat'] = exif.lat.toFixed(6);
+    }
+    if (typeof exif.lng === 'number' && Number.isFinite(exif.lng)) {
+      metadata['exif-lng'] = exif.lng.toFixed(6);
+    }
+    if (typeof exif.make === 'string') metadata['exif-make'] = exif.make;
+    if (typeof exif.model === 'string') metadata['exif-model'] = exif.model;
+  }
+
+  const signedUrl = await getR2UploadUrl(config, key, safeContentType, 300, metadata);
+
+  // Headers the client MUST send in PUT (Content-Type + any x-amz-meta-*)
+  const responseHeaders: Record<string, string> = { 'Content-Type': safeContentType };
+  for (const [k, v] of Object.entries(metadata)) {
+    responseHeaders[`x-amz-meta-${k.toLowerCase()}`] = v;
+  }
+
   const publicUrl = config.publicBase
     ? `${config.publicBase}/${key}`
     : signedUrl.split('?')[0];
 
-  return Response.json({ url: signedUrl, key, publicUrl });
+  return Response.json({ url: signedUrl, key, publicUrl, headers: responseHeaders });
 }
