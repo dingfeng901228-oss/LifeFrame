@@ -1,7 +1,7 @@
 'use client';
 
 import createGlobe from 'cobe';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export type GlobeMarker = {
   location: [number, number];
@@ -15,12 +15,18 @@ type Props = {
 
 // Click within this angular distance of a marker's lat/lng fires the callback.
 const MARKER_HIT_THRESHOLD_DEG = 6;
+const MIN_ZOOM = 0.6;
+const MAX_ZOOM = 3;
+const ZOOM_STEP = 1.15;
 
 export function Globe({ markers = [], onMarkerSelect }: Props = {}) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   // Live camera state, updated each onRender frame so click hit-tests match what's on screen.
   const phiRef = useRef(0);
   const thetaRef = useRef(0.25);
+  // CSS-transform zoom — kept on a ref so wheel events don't re-render the globe.
+  const scaleRef = useRef(1);
+  const [zoomDisplay, setZoomDisplay] = useState(1);
   // Keep latest callback without re-binding the click handler each render.
   const onSelectRef = useRef(onMarkerSelect);
   onSelectRef.current = onMarkerSelect;
@@ -60,6 +66,21 @@ export function Globe({ markers = [], onMarkerSelect }: Props = {}) {
         thetaRef.current = state.theta;
       },
     });
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
+      const next = Math.max(
+        MIN_ZOOM,
+        Math.min(MAX_ZOOM, scaleRef.current * factor),
+      );
+      if (next !== scaleRef.current) {
+        scaleRef.current = next;
+        canvas.style.transform = `scale(${next})`;
+        setZoomDisplay(next);
+      }
+    };
+    canvas.addEventListener('wheel', handleWheel, { passive: false });
 
     const handleClick = (e: MouseEvent) => {
       const cb = onSelectRef.current;
@@ -124,12 +145,20 @@ export function Globe({ markers = [], onMarkerSelect }: Props = {}) {
     return () => {
       globe.destroy();
       window.removeEventListener('resize', onResize);
+      canvas.removeEventListener('wheel', handleWheel);
       canvas.removeEventListener('click', handleClick);
+      canvas.style.transform = '';
     };
   }, [markers]);
 
+  const resetZoom = () => {
+    scaleRef.current = 1;
+    if (canvasRef.current) canvasRef.current.style.transform = 'scale(1)';
+    setZoomDisplay(1);
+  };
+
   return (
-    <div className="flex h-full w-full items-center justify-center">
+    <div className="relative flex h-full w-full items-center justify-center">
       <canvas
         ref={canvasRef}
         style={{
@@ -140,8 +169,20 @@ export function Globe({ markers = [], onMarkerSelect }: Props = {}) {
           aspectRatio: '1',
           cursor: 'grab',
           contain: 'layout paint size',
+          transformOrigin: 'center center',
+          transition: 'transform 80ms ease-out',
         }}
       />
+      {zoomDisplay !== 1 && (
+        <button
+          type="button"
+          onClick={resetZoom}
+          className="pointer-events-auto absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full border border-white/20 bg-black/70 px-4 py-1.5 text-xs text-white/80 backdrop-blur-sm transition hover:bg-black/90"
+          aria-label="重置缩放"
+        >
+          {zoomDisplay.toFixed(1)}× · 重置
+        </button>
+      )}
     </div>
   );
 }
