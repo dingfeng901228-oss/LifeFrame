@@ -3,7 +3,7 @@
 // for static same-origin assets. Skips /api and supabase routes so uploads and
 // auth never go through cache. Bumping VERSION invalidates both caches.
 
-const VERSION = 'v1';
+const VERSION = 'v2';
 const SHELL_CACHE = `shell-${VERSION}`;
 const RUNTIME_CACHE = `runtime-${VERSION}`;
 const PRECACHE_URLS = ['/', '/upload'];
