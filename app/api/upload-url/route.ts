@@ -1,16 +1,7 @@
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { getR2UploadUrl, type R2Config } from '@/lib/r2';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-type R2Config = {
-  accountId: string;
-  accessKeyId: string;
-  secretAccessKey: string;
-  bucket: string;
-  publicBase: string;
-};
 
 function loadConfig(): { ok: true; config: R2Config } | { ok: false; missing: string[] } {
   const required = {
@@ -36,20 +27,6 @@ function loadConfig(): { ok: true; config: R2Config } | { ok: false; missing: st
       publicBase: (process.env.R2_PUBLIC_BASE ?? '').replace(/\/$/, ''),
     },
   };
-}
-
-let cachedClient: S3Client | null = null;
-function getClient(cfg: R2Config): S3Client {
-  if (cachedClient) return cachedClient;
-  cachedClient = new S3Client({
-    region: 'auto',
-    endpoint: `https://${cfg.accountId}.r2.cloudflarestorage.com`,
-    credentials: {
-      accessKeyId: cfg.accessKeyId,
-      secretAccessKey: cfg.secretAccessKey,
-    },
-  });
-  return cachedClient;
 }
 
 function sanitizeFilename(name: string): string {
@@ -95,13 +72,7 @@ export async function POST(req: Request) {
   const date = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
   const key = `uploads/${date}/${Date.now()}-${filename}`;
 
-  const client = getClient(config);
-  const cmd = new PutObjectCommand({
-    Bucket: config.bucket,
-    Key: key,
-    ContentType: safeContentType,
-  });
-  const signedUrl = await getSignedUrl(client, cmd, { expiresIn: 300 });
+  const signedUrl = await getR2UploadUrl(config, key, safeContentType, 300);
   const publicUrl = config.publicBase
     ? `${config.publicBase}/${key}`
     : signedUrl.split('?')[0];
