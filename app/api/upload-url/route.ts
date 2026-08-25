@@ -1,4 +1,5 @@
 import { getR2UploadUrl, type R2Config } from '@/lib/r2';
+import { getSupabaseAdmin } from '@/lib/supabase';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -106,6 +107,29 @@ export async function POST(req: Request) {
   const publicUrl = config.publicBase
     ? `${config.publicBase}/${key}`
     : signedUrl.split('?')[0];
+
+  // Insert photo metadata into Supabase (best-effort — don't fail the request).
+  // Orphan rows (Supabase row but no R2 object) can happen if client fails PUT;
+  // we'll add a status field + cleanup job later if needed.
+  try {
+    const supabase = getSupabaseAdmin();
+    const { error } = await supabase.from('photos').insert({
+      key,
+      public_url: publicUrl,
+      filename,
+      content_type: safeContentType,
+      taken_at: typeof exif?.takenAt === 'string' ? exif.takenAt : null,
+      lat: typeof exif?.lat === 'number' && Number.isFinite(exif.lat) ? exif.lat : null,
+      lng: typeof exif?.lng === 'number' && Number.isFinite(exif.lng) ? exif.lng : null,
+      camera_make: typeof exif?.make === 'string' ? exif.make : null,
+      camera_model: typeof exif?.model === 'string' ? exif.model : null,
+    });
+    if (error) {
+      console.error('[supabase insert error]', error.message);
+    }
+  } catch (err) {
+    console.error('[supabase init/insert error]', err);
+  }
 
   return Response.json({ url: signedUrl, key, publicUrl });
 }
