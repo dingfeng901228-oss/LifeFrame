@@ -1,6 +1,7 @@
 import './globals.css';
 import Link from 'next/link';
 import { PWARegistrar } from '@/components/PWARegistrar';
+import { AuthButton } from '@/components/AuthButton';
 
 export const metadata = {
   title: 'LifeFrame · 用照片，留下生活的痕迹',
@@ -27,13 +28,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Link href="/" className="text-lg font-medium tracking-wide">
             LifeFrame
           </Link>
-          <nav className="flex gap-6 text-sm text-white/60">
+          <nav className="flex items-center gap-6 text-sm text-white/60">
             <Link href="/" className="hover:text-white">
               地球仪
             </Link>
             <Link href="/upload" className="hover:text-white">
               上传
             </Link>
+            <AuthButton />
           </nav>
         </header>
         <main>{children}</main>

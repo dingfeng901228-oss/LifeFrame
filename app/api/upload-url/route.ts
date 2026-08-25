@@ -62,6 +62,7 @@ export async function POST(req: Request) {
       lng?: unknown;
       make?: unknown;
       model?: unknown;
+      locationName?: unknown;
     };
   };
 
@@ -98,6 +99,9 @@ export async function POST(req: Request) {
     }
     if (typeof exif.make === 'string') metadata['exif-make'] = exif.make;
     if (typeof exif.model === 'string') metadata['exif-model'] = exif.model;
+    if (typeof exif.locationName === 'string' && exif.locationName.length > 0) {
+      metadata['exif-location-name'] = exif.locationName.slice(0, 240);
+    }
   }
 
   const signedUrl = await getR2UploadUrl(config, key, safeContentType, 300, metadata);
@@ -123,6 +127,7 @@ export async function POST(req: Request) {
       lng: typeof exif?.lng === 'number' && Number.isFinite(exif.lng) ? exif.lng : null,
       camera_make: typeof exif?.make === 'string' ? exif.make : null,
       camera_model: typeof exif?.model === 'string' ? exif.model : null,
+      location_name: typeof exif?.locationName === 'string' && exif.locationName.length > 0 ? exif.locationName.slice(0, 240) : null,
     });
     if (error) {
       console.error('[supabase insert error]', error.message);

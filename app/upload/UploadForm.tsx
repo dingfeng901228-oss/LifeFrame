@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { extractExif, type PhotoExif } from '@/lib/exif';
+import { MapPicker, type PickedLocation } from '@/components/MapPicker';
 
 type Status = 'idle' | 'signing' | 'uploading' | 'done' | 'error';
 
@@ -13,6 +14,9 @@ export function UploadForm() {
   const [fileName, setFileName] = useState<string | null>(null);
   const [fileSize, setFileSize] = useState<number | null>(null);
   const [exif, setExif] = useState<PhotoExif | null>(null);
+  const [picked, setPicked] = useState<PickedLocation | null>(null);
+  const [takenAtManual, setTakenAtManual] = useState<string>('');
+  const [mapOpen, setMapOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function onChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -30,15 +34,33 @@ export function UploadForm() {
       // it as R2 object metadata on upload.
       const exifData = await extractExif(file);
       setExif(exifData);
+      if (exifData.takenAt) {
+        // Convert ISO → datetime-local input format (YYYY-MM-DDTHH:mm)
+        setTakenAtManual(exifData.takenAt.slice(0, 16));
+      }
 
       setStatus('signing');
+      // Build the EXIF payload sent to the API. Picked location overrides
+      // any EXIF GPS — user explicit intent wins over auto-extraction.
+      const finalLat = picked?.lat ?? exifData.lat;
+      const finalLng = picked?.lng ?? exifData.lng;
+      const finalTaken = takenAtManual
+        ? new Date(takenAtManual).toISOString()
+        : exifData.takenAt;
       const signRes = await fetch('/api/upload-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           filename: file.name,
           contentType: file.type || 'application/octet-stream',
-          exif: exifData,
+          exif: {
+            takenAt: finalTaken,
+            lat: finalLat,
+            lng: finalLng,
+            make: exifData.make,
+            model: exifData.model,
+            locationName: picked?.name,
+          },
         }),
       });
       if (!signRes.ok) {
@@ -80,6 +102,8 @@ export function UploadForm() {
     setFileName(null);
     setFileSize(null);
     setExif(null);
+    setPicked(null);
+    setTakenAtManual('');
     if (inputRef.current) inputRef.current.value = '';
   }
 
@@ -87,6 +111,7 @@ export function UploadForm() {
 
   return (
     <div className="space-y-6">
+      {/* File input */}
       <label className="block">
         <span className="sr-only">选择图片</span>
         <input
@@ -114,6 +139,54 @@ export function UploadForm() {
         {status === 'error' && <span className="text-rose-300">失败：{error}</span>}
       </div>
 
+      {/* Manual time override (rare — most photos have EXIF) */}
+      {(status === 'idle' || status === 'signing' || status === 'uploading' ||
+        status === 'error') && (
+        <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3 text-xs">
+          <p className="mb-2 text-white/50">拍摄时间（可选 — 优先用 EXIF）</p>
+          <input
+            type="datetime-local"
+            value={takenAtManual}
+            onChange={(e) => setTakenAtManual(e.target.value)}
+            className="rounded border border-white/15 bg-white/5 px-2 py-1 text-xs text-white"
+          />
+        </div>
+      )}
+
+      {/* Map picker — lets the user override / set the location */}
+      <div className="rounded-lg border border-white/10 bg-white/[0.02] p-4 text-sm">
+        <p className="mb-2 text-white/50">拍摄地点（可选 — 优先用 EXIF GPS）</p>
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            {picked ? (
+              <span className="text-white/80">
+                📍 <span className="font-medium text-white">{picked.name}</span>
+                <span className="ml-2 text-white/40">
+                  ({picked.lat.toFixed(4)}, {picked.lng.toFixed(4)})
+                </span>
+              </span>
+            ) : exif?.lat != null && exif?.lng != null ? (
+              <span className="text-white/60">
+                📍 EXIF GPS: {exif.lat.toFixed(4)}, {exif.lng.toFixed(4)}
+              </span>
+            ) : (
+              <span className="text-white/40">
+                无 GPS — 选择地点让照片出现在地球仪上
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setMapOpen(true)}
+            disabled={busy}
+            className="rounded border border-white/20 px-3 py-1.5 text-xs text-white/80 transition hover:border-white/40 hover:text-white disabled:opacity-50"
+          >
+            {picked ? '🗺️ 更改地点' : '🗺️ 选择地点'}
+          </button>
+        </div>
+      </div>
+
+      {/* EXIF readout */}
       {exif && (exif.takenAt || exif.lat != null || exif.make || exif.model) && (
         <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3 text-xs text-white/70">
           <p className="mb-1 text-white/50">EXIF</p>
@@ -127,6 +200,7 @@ export function UploadForm() {
         </div>
       )}
 
+      {/* Result */}
       {publicUrl && (
         <div className="rounded-lg border border-white/10 bg-white/[0.02] p-4 text-sm">
           <p className="text-white/50">对象 Key</p>
@@ -151,6 +225,17 @@ export function UploadForm() {
         >
           重选
         </button>
+      )}
+
+      {mapOpen && (
+        <MapPicker
+          initial={picked}
+          onSelect={(loc) => {
+            setPicked(loc);
+            setMapOpen(false);
+          }}
+          onClose={() => setMapOpen(false)}
+        />
       )}
     </div>
   );
