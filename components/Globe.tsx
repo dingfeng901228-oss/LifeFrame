@@ -3,7 +3,9 @@
 import createGlobe from 'cobe';
 import { useEffect, useRef } from 'react';
 
-export function Globe() {
+type Marker = { location: [number, number]; size?: number };
+
+export function Globe({ markers = [] }: { markers?: Marker[] } = {}) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
@@ -32,7 +34,10 @@ export function Globe() {
       baseColor: [0.2, 0.2, 0.25],
       markerColor: [0.4, 0.9, 1],
       glowColor: [1, 1, 1],
-      markers: [],
+      markers: markers.map((m) => ({
+        location: m.location,
+        size: m.size ?? 0.05,
+      })),
       onRender: (state) => {
         state.phi = phi;
         phi += 0.005;
@@ -44,7 +49,7 @@ export function Globe() {
       globe.destroy();
       window.removeEventListener('resize', onResize);
     };
-  }, []);
+  }, [markers]);
 
   return (
     <div className="flex h-full w-full items-center justify-center">
