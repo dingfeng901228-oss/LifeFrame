@@ -24,6 +24,7 @@ const MS_PER_DAY = 24 * 3600 * 1000;
 export function HomeGallery() {
   const [photos, setPhotos] = useState<PhotoRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [selected, setSelected] = useState<PhotoRow | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -32,25 +33,40 @@ export function HomeGallery() {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     if (!url || !key) {
+      setFetchError('缺少 NEXT_PUBLIC_SUPABASE_URL 或 NEXT_PUBLIC_SUPABASE_ANON_KEY');
       setLoading(false);
       return;
     }
     const supabase = createClient(url, key);
-    supabase
-      .from('photos')
-      .select(
-        'lat, lng, public_url, filename, taken_at, created_at, camera_make, camera_model, categories',
-      )
-      .order('created_at', { ascending: false })
-      .limit(500)
-      .then(({ data, error }) => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('photos')
+          .select(
+            'lat, lng, public_url, filename, taken_at, created_at, camera_make, camera_model, categories',
+          )
+          .order('created_at', { ascending: false })
+          .limit(500);
+        if (cancelled) return;
         if (error) {
           console.error('[gallery fetch error]', error.message);
+          setFetchError(error.message);
         } else if (data) {
           setPhotos(data as PhotoRow[]);
         }
-        setLoading(false);
-      });
+      } catch (err) {
+        if (cancelled) return;
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error('[gallery fetch threw]', msg);
+        setFetchError(msg);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // ESC closes detail first, then gallery
@@ -124,6 +140,15 @@ export function HomeGallery() {
                 ? `${visibleCount} 张照片在 ${formatMonth(selectedDate)} ± ${TIMELINE_WINDOW_DAYS / 2} 天窗口内`
                 : `${photos.length} 张照片已点亮地点`}
         </p>
+        {fetchError && (
+          <p className="mt-3 max-w-md text-xs text-rose-300/90">
+            ⚠ 加载照片失败：{fetchError}
+            <br />
+            <span className="text-white/40">
+              检查 Supabase URL/anon key 是否在 Vercel Environment Variables 配齐。
+            </span>
+          </p>
+        )}
       </div>
 
       {/* Timeline — drives the globe marker filter. */}
@@ -139,13 +164,16 @@ export function HomeGallery() {
       {/* Top-right "view all photos" button — moved up so it never collides
           with the Timeline at bottom-20. Bigger label so it's unmissable
           even when the SW serves a stale bundle. */}
-      {!loading && photos.length > 0 && (
+      {!loading && (
         <button
           onClick={() => setGalleryOpen(true)}
           className="pointer-events-auto fixed top-20 right-4 z-40 rounded-full border border-white/30 bg-black/80 px-5 py-2.5 text-sm font-medium text-white shadow-xl backdrop-blur-sm transition hover:scale-105 hover:bg-black/95"
           aria-label="查看所有照片"
         >
-          📷 查看全部 {photos.length} 张照片
+          📷{' '}
+          {photos.length > 0
+            ? `查看全部 ${photos.length} 张照片`
+            : '查看照片'}
         </button>
       )}
 
