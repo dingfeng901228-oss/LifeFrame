@@ -1,0 +1,12 @@
+[
+  {
+    "AllowedOrigins": [
+      "https://lifeframe.frank2025.com",
+      "http://localhost:3000"
+    ],
+    "AllowedMethods": ["PUT", "GET", "HEAD"],
+    "AllowedHeaders": ["*"],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 3600
+  }
+]
