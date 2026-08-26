@@ -64,6 +64,9 @@ export async function POST(req: Request) {
       model?: unknown;
       locationName?: unknown;
     };
+    // §9 of the spec: multi-tag classification. Subset of {person, scenery}.
+    // Empty array = uncategorized.
+    categories?: unknown;
   };
 
   let body: UploadRequestBody;
@@ -103,6 +106,15 @@ export async function POST(req: Request) {
       metadata['exif-location-name'] = exif.locationName.slice(0, 240);
     }
   }
+  // Categories are top-level on the request body (not part of EXIF),
+  // and only valid as an array of literal strings. Anything else is
+  // silently dropped to avoid R2 metadata garbage.
+  const categories = Array.isArray(body.categories)
+    ? body.categories.filter((x): x is string => typeof x === 'string')
+    : [];
+  if (categories.length > 0) {
+    metadata['exif-categories'] = categories.join(',').slice(0, 240);
+  }
 
   const signedUrl = await getR2UploadUrl(config, key, safeContentType, 300, metadata);
   // Note: AWS SDK hoists x-amz-meta-* into URL query params (visible in signedUrl),
@@ -128,6 +140,7 @@ export async function POST(req: Request) {
       camera_make: typeof exif?.make === 'string' ? exif.make : null,
       camera_model: typeof exif?.model === 'string' ? exif.model : null,
       location_name: typeof exif?.locationName === 'string' && exif.locationName.length > 0 ? exif.locationName.slice(0, 240) : null,
+      categories: categories.length > 0 ? categories : [],
     });
     if (error) {
       console.error('[supabase insert error]', error.message);

@@ -6,6 +6,7 @@ import { MapPicker, type PickedLocation } from '@/components/MapPicker';
 
 const MAX_BATCH = 30;
 const MAX_CONCURRENCY = 3;
+const NOMINATIM_UA = 'LifeFrame/0.1 (https://lifeframe.frank2025.com)';
 
 type FileStatus = 'pending' | 'extracting' | 'ready' | 'uploading' | 'done' | 'error';
 
@@ -33,6 +34,8 @@ export function UploadForm() {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [picked, setPicked] = useState<PickedLocation | null>(null);
   const [mapOpen, setMapOpen] = useState(false);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [locating, setLocating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -82,9 +85,63 @@ export function UploadForm() {
     );
   }
 
+  // ── Use current location ──────────────────────────────────────
+  // Browser Geolocation API → lat/lng → Nominatim reverse geocode
+  // (zh) → set as the picked location. Same path the map picker takes,
+  // but triggered from the device's GPS instead of a click.
+  function useCurrentLocation() {
+    if (!navigator.geolocation) {
+      setError('浏览器不支持定位');
+      return;
+    }
+    setLocating(true);
+    setError(null);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const fallback = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=14&accept-language=zh`,
+            { headers: { 'User-Agent': NOMINATIM_UA } },
+          );
+          if (res.ok) {
+            const data = (await res.json()) as { display_name?: string };
+            const name =
+              data.display_name
+                ?.split(',')
+                .slice(0, 2)
+                .map((s) => s.trim())
+                .join(', ') || fallback;
+            setPicked({ lat, lng, name });
+          } else {
+            setPicked({ lat, lng, name: fallback });
+          }
+        } catch {
+          setPicked({ lat, lng, name: fallback });
+        } finally {
+          setLocating(false);
+        }
+      },
+      (err) => {
+        setError(`定位失败：${err.message}`);
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+    );
+  }
+
+  function toggleCategory(tag: 'person' | 'scenery') {
+    setCategories((c) =>
+      c.includes(tag) ? c.filter((x) => x !== tag) : [...c, tag],
+    );
+  }
+
   async function uploadOne(
     item: QueueItem,
     batchPicked: PickedLocation | null,
+    batchCategories: string[],
   ): Promise<void> {
     setQueue((q) =>
       q.map((it) =>
@@ -116,6 +173,8 @@ export function UploadForm() {
             model: item.exif?.model,
             locationName: batchPicked?.name,
           },
+          categories:
+            batchCategories.length > 0 ? batchCategories : undefined,
         }),
       });
       if (!signRes.ok) {
@@ -167,7 +226,7 @@ export function UploadForm() {
     for (let i = 0; i < queue.length; i += MAX_CONCURRENCY) {
       const chunk = queue.slice(i, i + MAX_CONCURRENCY);
       const settled = await Promise.allSettled(
-        chunk.map((item) => uploadOne(item, picked)),
+        chunk.map((item) => uploadOne(item, picked, categories)),
       );
       results.push(...settled);
     }
@@ -186,6 +245,7 @@ export function UploadForm() {
     setBatchStatus('idle');
     setQueue([]);
     setPicked(null);
+    setCategories([]);
     setError(null);
     if (inputRef.current) inputRef.current.value = '';
   }
@@ -218,7 +278,7 @@ export function UploadForm() {
         {batchStatus === 'idle' && <span className="text-white/40">等选择</span>}
         {batchStatus === 'ready' && (
           <span className="text-sky-300">
-            已读取 {queue.length} 张 EXIF — 可改地点后点上传
+            已读取 {queue.length} 张 EXIF — 可改地点/分类后点上传
           </span>
         )}
         {batchStatus === 'uploading' && (
@@ -251,13 +311,14 @@ export function UploadForm() {
       )}
 
       {/* Batch-level location picker. If unset, each photo falls back
-          to its own EXIF GPS. */}
+          to its own EXIF GPS. Two ways to populate it: pick on a map,
+          or use the device's GPS via the geolocation API. */}
       {showPickers && (
         <div className="rounded-lg border border-white/10 bg-white/[0.02] p-4 text-sm">
           <p className="mb-2 text-white/50">
             拍摄地点（整批共用 — 可选；不选则每张用各自 EXIF GPS）
           </p>
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0 flex-1">
               {picked ? (
                 <span className="text-white/80">
@@ -275,14 +336,55 @@ export function UploadForm() {
                 </span>
               )}
             </div>
-            <button
-              type="button"
-              onClick={() => setMapOpen(true)}
-              disabled={busy}
-              className="rounded border border-white/20 px-3 py-1.5 text-xs text-white/80 transition hover:border-white/40 hover:text-white disabled:opacity-50"
-            >
-              {picked ? '🗺️ 更改地点' : '🗺️ 选择地点'}
-            </button>
+            <div className="flex flex-shrink-0 gap-2">
+              <button
+                type="button"
+                onClick={useCurrentLocation}
+                disabled={busy || locating}
+                className="rounded border border-white/20 px-3 py-1.5 text-xs text-white/80 transition hover:border-white/40 hover:text-white disabled:opacity-50"
+              >
+                {locating ? '定位中…' : '📍 使用当前位置'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setMapOpen(true)}
+                disabled={busy}
+                className="rounded border border-white/20 px-3 py-1.5 text-xs text-white/80 transition hover:border-white/40 hover:text-white disabled:opacity-50"
+              >
+                {picked ? '🗺️ 更改地点' : '🗺️ 选择地点'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Categories — multi-tag for the whole batch. §9 of the spec:
+          "采用多标签设计而不是单选。例如照片 A 同时归类人物 + 风景。"
+          We persist to photos.categories via the API route. */}
+      {showPickers && (
+        <div className="rounded-lg border border-white/10 bg-white/[0.02] p-4 text-sm">
+          <p className="mb-2 text-white/50">
+            分类（多选 — 整批共用）
+          </p>
+          <div className="flex gap-4">
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                checked={categories.includes('person')}
+                onChange={() => toggleCategory('person')}
+                className="h-4 w-4 rounded border-white/30 bg-white/5 accent-cyan-400"
+              />
+              <span className="text-white/80">👤 人物</span>
+            </label>
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                checked={categories.includes('scenery')}
+                onChange={() => toggleCategory('scenery')}
+                className="h-4 w-4 rounded border-white/30 bg-white/5 accent-cyan-400"
+              />
+              <span className="text-white/80">🏞️ 风景</span>
+            </label>
           </div>
         </div>
       )}
