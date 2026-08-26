@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 type Photo = {
   taken_at: string | null;
@@ -17,10 +17,11 @@ type Props = {
 const MS_PER_DAY = 24 * 3600 * 1000;
 
 /**
- * Horizontal date-range timeline for the home page. The user clicks the
- * track to set `selectedDate`; the home page filters globe markers to
- * photos within ±windowDays/2 of that date. Selecting nothing (= null)
- * reverts to "all time".
+ * Horizontal date-range timeline for the home page. The user can either
+ * click anywhere on the track to jump to that date, or click-and-drag
+ * the track (or the cyan knob) to scrub through dates continuously.
+ * The home page filters globe markers to photos within ±windowDays/2 of
+ * the selected date. Selecting nothing (= null) reverts to "all time".
  */
 export function Timeline({
   photos,
@@ -29,6 +30,7 @@ export function Timeline({
   windowDays,
 }: Props) {
   const trackRef = useRef<HTMLDivElement>(null);
+  const [dragging, setDragging] = useState(false);
 
   const { minDate, maxDate } = useMemo(() => {
     let min: Date | null = null;
@@ -82,24 +84,79 @@ export function Timeline({
     [minDate, totalSpan],
   );
 
-  const handleTrackClick = useCallback(
-    (e: React.MouseEvent) => {
-      if (!trackRef.current) return;
+  // Convert a clientX coordinate (within the viewport) to a Date based
+  // on the track's bounding rect. Returns null if the track isn't
+  // mounted yet.
+  const dateFromClientX = useCallback(
+    (clientX: number): Date | null => {
+      if (!trackRef.current) return null;
       const rect = trackRef.current.getBoundingClientRect();
-      const x = (e.clientX - rect.left) / rect.width;
-      const t = minDate.getTime() + Math.max(0, Math.min(1, x)) * totalSpan;
-      onChange(new Date(t));
+      const x = (clientX - rect.left) / rect.width;
+      const t =
+        minDate.getTime() + Math.max(0, Math.min(1, x)) * totalSpan;
+      return new Date(t);
     },
-    [minDate, totalSpan, onChange],
+    [minDate, totalSpan],
   );
+
+  // ── Drag-to-scrub ───────────────────────────────────────────────
+  // Same pattern as Globe.tsx: pointerdown on the track starts the
+  // drag, window-level listeners keep firing when the pointer leaves
+  // the track (especially relevant on touch). We avoid setPointerCapture
+  // here too so clicks and drags both work natively.
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      // Only respond to primary mouse button (left click) or touch.
+      if (e.button !== 0 && e.pointerType === 'mouse') return;
+      e.preventDefault();
+      setDragging(true);
+      const date = dateFromClientX(e.clientX);
+      if (date) onChange(date);
+
+      window.addEventListener('pointermove', handleWindowPointerMove);
+      window.addEventListener('pointerup', handleWindowPointerUp, {
+        once: true,
+      });
+      window.addEventListener('pointercancel', handleWindowPointerUp, {
+        once: true,
+      });
+    },
+    [dateFromClientX, onChange],
+  );
+
+  const handleWindowPointerMove = useCallback(
+    (e: PointerEvent) => {
+      const date = dateFromClientX(e.clientX);
+      if (date) onChange(date);
+    },
+    [dateFromClientX, onChange],
+  );
+
+  const handleWindowPointerUp = useCallback(() => {
+    setDragging(false);
+    window.removeEventListener('pointermove', handleWindowPointerMove);
+    window.removeEventListener('pointerup', handleWindowPointerUp);
+    window.removeEventListener('pointercancel', handleWindowPointerUp);
+  }, []);
+
+  // Cleanup on unmount.
+  useEffect(() => {
+    return () => {
+      window.removeEventListener('pointermove', handleWindowPointerMove);
+      window.removeEventListener('pointerup', handleWindowPointerUp);
+      window.removeEventListener('pointercancel', handleWindowPointerUp);
+    };
+  }, []);
 
   const handlePos = selectedDate ? positionFor(selectedDate) : null;
   const halfWindowPct = (windowDays / 2 / (totalSpan / MS_PER_DAY)) * 100;
-  const rangeStart = handlePos !== null ? Math.max(0, handlePos - halfWindowPct) : null;
-  const rangeWidth = handlePos !== null ? Math.min(100, halfWindowPct * 2) : null;
+  const rangeStart =
+    handlePos !== null ? Math.max(0, handlePos - halfWindowPct) : null;
+  const rangeWidth =
+    handlePos !== null ? Math.min(100, halfWindowPct * 2) : null;
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-6 pb-6 pt-2">
+    <div className="mx-auto w-full max-w-3xl px-6 pb-3 pt-2">
       <div className="mb-2 flex items-center justify-between text-[10px] tracking-wider text-white/40">
         <span className="tabular-nums">
           {minDate.toISOString().slice(0, 10)}
@@ -107,7 +164,7 @@ export function Timeline({
         <span className="text-white/60">
           {selectedDate
             ? `筛选：${formatShort(selectedDate)} ± ${Math.round(windowDays / 2)} 天`
-            : '全部时间（点下方选时间筛选地球仪照片）'}
+            : '拖动滑块筛选地球仪照片'}
         </span>
         <span className="tabular-nums">
           {maxDate.toISOString().slice(0, 10)}
@@ -115,8 +172,12 @@ export function Timeline({
       </div>
       <div
         ref={trackRef}
-        onClick={handleTrackClick}
-        className="relative h-14 cursor-pointer select-none rounded border border-white/10 bg-white/[0.03] transition hover:border-white/20"
+        onPointerDown={handlePointerDown}
+        className={`relative h-14 touch-none select-none rounded border bg-white/[0.03] transition ${
+          dragging
+            ? 'cursor-grabbing border-white/40'
+            : 'cursor-pointer border-white/10 hover:border-white/20'
+        }`}
       >
         {/* Year ticks */}
         {ticks
@@ -124,7 +185,7 @@ export function Timeline({
           .map((t) => (
             <div
               key={`y-${t.label}`}
-              className="absolute top-0 bottom-0 border-l border-white/25"
+              className="pointer-events-none absolute top-0 bottom-0 border-l border-white/25"
               style={{ left: `${positionFor(t.date)}%` }}
             >
               <span className="absolute left-1 top-1 text-[10px] tracking-wider text-white/70">
@@ -138,7 +199,7 @@ export function Timeline({
           .map((t, i) => (
             <div
               key={`m-${i}`}
-              className="absolute top-7 bottom-0 border-l border-white/10"
+              className="pointer-events-none absolute top-7 bottom-0 border-l border-white/10"
               style={{ left: `${positionFor(t.date)}%` }}
             />
           ))}
@@ -152,17 +213,23 @@ export function Timeline({
             }}
           />
         )}
-        {/* Selected marker */}
+        {/* Selected marker — vertical line + draggable knob. The knob
+            is a cyan dot that sits on top of the line and gives users
+            a clear "grab here" affordance. The whole track is also
+            draggable, but the knob makes it discoverable. */}
         {handlePos !== null && (
           <div
-            className="pointer-events-none absolute -top-1 -bottom-1 w-0.5 bg-cyan-400 shadow-[0_0_10px_rgba(103,232,249,0.7)]"
-            style={{ left: `${handlePos}%` }}
-          />
+            className="pointer-events-none absolute -top-2 -bottom-2"
+            style={{ left: `${handlePos}%`, transform: 'translateX(-50%)' }}
+          >
+            <div className="h-full w-0.5 bg-cyan-400 shadow-[0_0_10px_rgba(103,232,249,0.7)]" />
+            <div className="absolute top-1/2 left-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-cyan-400 bg-black shadow-[0_0_12px_rgba(103,232,249,0.6)]" />
+          </div>
         )}
       </div>
       <div className="mt-1 flex items-center justify-between text-[10px]">
         <span className="text-white/30">
-          点击轨道选时间 · 拖拽上下方向调窗口（开发中）
+          {dragging ? '拖动中…' : '点击或拖动轨道选时间'}
         </span>
         {selectedDate && (
           <button

@@ -201,8 +201,13 @@ export function Globe({ markers = [], onMarkerSelect }: Props = {}) {
         ref={wrapperRef}
         className="relative overflow-hidden rounded-full"
         style={{
-          width: 'min(85vh, 85vw, 900px)',
-          height: 'min(85vh, 85vw, 900px)',
+          // Sized down from 85vh to 70vh so the Timeline below has room
+          // to render without overlapping the globe on desktop. The
+          // draggable Timeline needs more vertical real estate than the
+          // old click-only one (drag handle + bigger hit area), so we
+          // give the globe the top ~70% of the viewport.
+          width: 'min(70vh, 70vw, 760px)',
+          height: 'min(70vh, 70vw, 760px)',
           aspectRatio: '1',
           touchAction: 'none',
           cursor: dragRef.current ? 'grabbing' : 'grab',
@@ -284,17 +289,6 @@ export function Globe({ markers = [], onMarkerSelect }: Props = {}) {
             ))}
           </g>
         </svg>
-      </div>
-
-      <div className="pointer-events-none absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-2">
-        <button
-          type="button"
-          onClick={() => setAutoRotate((v) => !v)}
-          className="pointer-events-auto rounded-full border border-white/20 bg-black/70 px-4 py-1.5 text-xs text-white/80 backdrop-blur-sm transition hover:bg-black/90"
-          aria-label={autoRotate ? '暂停旋转' : '继续旋转'}
-        >
-          {autoRotate ? '❚❚ 暂停' : '▶ 继续'}
-        </button>
       </div>
     </div>
   );

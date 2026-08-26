@@ -151,8 +151,10 @@ export function HomeGallery() {
         )}
       </div>
 
-      {/* Timeline — drives the globe marker filter. */}
-      <div className="pointer-events-auto absolute inset-x-0 bottom-20">
+      {/* Timeline — drives the globe marker filter. Pinned to the
+          very bottom (bottom-3) so it sits below the (now smaller)
+          globe on desktop without overlapping. */}
+      <div className="pointer-events-auto absolute inset-x-0 bottom-3">
         <Timeline
           photos={photos}
           selectedDate={selectedDate}
