@@ -127,18 +127,27 @@ export function Globe({ markers = [], onMarkerSelect }: Props = {}) {
   }, [markers, projection]);
 
   // ── Drag handling (pointer events for unified mouse/touch) ─────
+  // Window-level pointermove/pointerup listeners are attached on
+  // pointerdown so drag keeps working even when the pointer leaves
+  // the wrapper (e.g. touch dragged off-screen). This replaces the
+  // previous setPointerCapture approach — setPointerCapture redirects
+  // click events to the capture target (per Pointer Events spec), which
+  // silently broke marker onClick. Without it, clicks fire on the
+  // original target (the marker <g>) and the photo detail modal opens.
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0 && e.pointerType === 'mouse') return;
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     dragRef.current = {
       x: e.clientX,
       y: e.clientY,
       rot: [...rotation],
     };
     setAutoRotate(false);
+    window.addEventListener('pointermove', handleWindowPointerMove);
+    window.addEventListener('pointerup', handleWindowPointerUp, { once: true });
+    window.addEventListener('pointercancel', handleWindowPointerUp, { once: true });
   };
 
-  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+  const handleWindowPointerMove = (e: PointerEvent) => {
     const d = dragRef.current;
     if (!d) return;
     const dx = e.clientX - d.x;
@@ -150,16 +159,21 @@ export function Globe({ markers = [], onMarkerSelect }: Props = {}) {
     setRotation([lambda, phi]);
   };
 
-  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (dragRef.current) {
-      try {
-        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-      } catch {
-        /* noop — pointer might already be released */
-      }
-      dragRef.current = null;
-    }
+  const handleWindowPointerUp = () => {
+    dragRef.current = null;
+    window.removeEventListener('pointermove', handleWindowPointerMove);
+    window.removeEventListener('pointerup', handleWindowPointerUp);
+    window.removeEventListener('pointercancel', handleWindowPointerUp);
   };
+
+  // Cleanup on unmount.
+  useEffect(() => {
+    return () => {
+      window.removeEventListener('pointermove', handleWindowPointerMove);
+      window.removeEventListener('pointerup', handleWindowPointerUp);
+      window.removeEventListener('pointercancel', handleWindowPointerUp);
+    };
+  }, []);
 
   // ── Wheel zoom ──────────────────────────────────────────────────
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
@@ -176,15 +190,10 @@ export function Globe({ markers = [], onMarkerSelect }: Props = {}) {
   // still open the photo modal, listen for click on the wrapper and
   // walk up from event.target to find the nearest marker (identified
   // by data-marker-index).
-  const handleWrapperClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const target = e.target as Element | null;
-    const markerEl = target?.closest('[data-marker-index]');
-    if (!markerEl) return;
-    const idx = Number(markerEl.getAttribute('data-marker-index'));
-    if (Number.isFinite(idx) && idx >= 0) {
-      onMarkerSelect?.(idx);
-    }
-  };
+  // NOTE: this delegation handler is now removed — we no longer call
+  // setPointerCapture (see handlePointerDown), so the marker <g> click
+  // handlers below fire directly. The wrapper's no longer needs the
+  // delegation path.
 
   return (
     <div className="relative flex h-full w-full items-center justify-center select-none">
@@ -199,11 +208,7 @@ export function Globe({ markers = [], onMarkerSelect }: Props = {}) {
           cursor: dragRef.current ? 'grabbing' : 'grab',
         }}
         onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerUp}
         onWheel={handleWheel}
-        onClick={handleWrapperClick}
       >
         <svg
           width={size}
@@ -241,32 +246,40 @@ export function Globe({ markers = [], onMarkerSelect }: Props = {}) {
             ))}
           </g>
 
-          {/* Photo markers — SVG circle. onClick lives on the wrapper
-              (handleWrapperClick) because setPointerCapture redirects
-              click to the capture target. data-marker-index lets the
-              wrapper's click handler find which marker was clicked. */}
+          {/* Photo markers — SVG <g> with onClick. The first circle is an
+              invisible hit-test area (r=18, fill=transparent,
+              pointer-events=all) so the click target is much bigger
+              than the visible 3.5px dot. Without this the user has to
+              click a ~7px target on a globe that moves every frame. */}
           <g>
             {projectedMarkers.map((m) => (
               <g
                 key={m.i}
-                data-marker-index={m.i}
                 transform={`translate(${m.x}, ${m.y})`}
                 style={{ cursor: 'pointer' }}
+                onClick={() => onMarkerSelect?.(m.i)}
                 onMouseEnter={(e) => {
                   const target = e.currentTarget;
-                  target.querySelectorAll('circle').forEach((c) => {
-                    c.setAttribute('r', c.getAttribute('data-base-r') || c.getAttribute('r') || '');
-                  });
                   target.setAttribute('data-hover', '1');
                 }}
               >
+                <circle
+                  r={18}
+                  fill="transparent"
+                  pointerEvents="all"
+                />
                 <circle
                   r={9}
                   fill="rgba(103, 232, 249, 0.22)"
                   stroke="rgba(103, 232, 249, 0.5)"
                   strokeWidth={1}
+                  pointerEvents="none"
                 />
-                <circle r={3.5} fill="rgb(103, 232, 249)" />
+                <circle
+                  r={3.5}
+                  fill="rgb(103, 232, 249)"
+                  pointerEvents="none"
+                />
               </g>
             ))}
           </g>
