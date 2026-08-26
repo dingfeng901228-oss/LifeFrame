@@ -57,27 +57,27 @@ function LoginInner() {
 
   return (
     <div className="mx-auto max-w-sm px-6 py-16">
-      <h1 className="text-2xl font-light">
+      <h1 className="text-2xl font-light text-black dark:text-white">
         {mode === 'signin' ? '登录' : '注册'}
       </h1>
-      <p className="mt-2 text-sm text-white/50">
+      <p className="mt-2 text-sm text-black/50 dark:text-white/50">
         LifeFrame 私人照片空间。
       </p>
       <form onSubmit={onSubmit} className="mt-8 space-y-4">
         <label className="block">
-          <span className="block text-xs text-white/60">邮箱</span>
+          <span className="block text-xs text-black/60 dark:text-white/60">邮箱</span>
           <input
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
             autoComplete="email"
-            className="mt-1 block w-full rounded border border-white/15 bg-white/5 px-3 py-2 text-sm text-white placeholder-white/40 focus:border-white/40 focus:outline-none"
+            className="mt-1 block w-full rounded border border-black/15 dark:border-white/15 bg-black/5 dark:bg-white/5 px-3 py-2 text-sm text-black dark:text-white placeholder-black/40 dark:placeholder-white/40 focus:border-black/40 dark:focus:border-white/40 focus:outline-none"
             placeholder="you@example.com"
           />
         </label>
         <label className="block">
-          <span className="block text-xs text-white/60">密码</span>
+          <span className="block text-xs text-black/60 dark:text-white/60">密码</span>
           <input
             type="password"
             value={password}
@@ -85,20 +85,20 @@ function LoginInner() {
             required
             minLength={6}
             autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-            className="mt-1 block w-full rounded border border-white/15 bg-white/5 px-3 py-2 text-sm text-white placeholder-white/40 focus:border-white/40 focus:outline-none"
+            className="mt-1 block w-full rounded border border-black/15 dark:border-white/15 bg-black/5 dark:bg-white/5 px-3 py-2 text-sm text-black dark:text-white placeholder-black/40 dark:placeholder-white/40 focus:border-black/40 dark:focus:border-white/40 focus:outline-none"
           />
         </label>
-        {error && <p className="text-sm text-rose-300">{error}</p>}
-        {message && <p className="text-sm text-emerald-300">{message}</p>}
+        {error && <p className="text-sm text-rose-700 dark:text-rose-300">{error}</p>}
+        {message && <p className="text-sm text-emerald-700 dark:text-emerald-300">{message}</p>}
         <button
           type="submit"
           disabled={pending}
-          className="block w-full rounded bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-white/90 disabled:opacity-50"
+          className="block w-full rounded bg-black px-4 py-2 text-sm font-medium text-white transition hover:bg-black/90 disabled:opacity-50 dark:bg-white dark:text-black dark:hover:bg-white/90"
         >
           {pending ? '处理中…' : mode === 'signin' ? '登录' : '注册'}
         </button>
       </form>
-      <p className="mt-6 text-center text-sm text-white/50">
+      <p className="mt-6 text-center text-sm text-black/50 dark:text-white/50">
         {mode === 'signin' ? '还没有账号？' : '已有账号？'}{' '}
         <button
           type="button"
@@ -107,7 +107,7 @@ function LoginInner() {
             setError(null);
             setMessage(null);
           }}
-          className="text-sky-300 underline"
+          className="text-sky-700 underline dark:text-sky-300"
         >
           {mode === 'signin' ? '注册' : '登录'}
         </button>
@@ -120,7 +120,7 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="mx-auto max-w-sm px-6 py-16 text-white/40">加载中…</div>
+        <div className="mx-auto max-w-sm px-6 py-16 text-black/40 dark:text-white/40">加载中…</div>
       }
     >
       <LoginInner />

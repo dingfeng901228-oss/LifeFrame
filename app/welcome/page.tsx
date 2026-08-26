@@ -70,43 +70,43 @@ export default function WelcomePage() {
       <main className="mx-auto max-w-3xl px-6 py-16 sm:py-24">
         <article>
           <header className="mb-16">
-            <p className="mb-4 text-xs tracking-[0.4em] text-white/40 uppercase">
+            <p className="mb-4 text-xs tracking-[0.4em] text-black/40 dark:text-white/40 uppercase">
               Personal photo journal
             </p>
-            <h1 className="text-4xl font-light leading-tight sm:text-5xl">
+            <h1 className="text-4xl font-light leading-tight text-black dark:text-white sm:text-5xl">
               用照片，留下生活的痕迹
             </h1>
-            <p className="mt-3 text-sm tracking-widest text-white/40">
+            <p className="mt-3 text-sm tracking-widest text-black/40 dark:text-white/40">
               写真で、暮らしの軌跡を残す
             </p>
           </header>
 
-          <section className="mb-16 space-y-5 text-lg leading-relaxed text-white/75">
+          <section className="mb-16 space-y-5 text-lg leading-relaxed text-black/75 dark:text-white/75">
             <p>
-              LifeFrame 是一个<strong className="text-white">个人照片生活记录与时空记忆展示网站</strong>。
-              把你的照片按<strong className="text-white">时间</strong>
-              和<strong className="text-white">空间</strong>
+              LifeFrame 是一个<strong className="text-black dark:text-white">个人照片生活记录与时空记忆展示网站</strong>。
+              把你的照片按<strong className="text-black dark:text-white">时间</strong>
+              和<strong className="text-black dark:text-white">空间</strong>
               重新组织成可探索的「生活博物馆」。
             </p>
             <p>
               不是传统的瀑布流相册。是一颗会慢慢自转的
-              <strong className="text-white">3D 地球仪</strong>、
+              <strong className="text-black dark:text-white">3D 地球仪</strong>、
               一条像播放器进度条一样的
-              <strong className="text-white">时间轴</strong>，
+              <strong className="text-black dark:text-white">时间轴</strong>，
               以及一张「今天历史上」卡片。
             </p>
           </section>
 
           <section className="mb-16">
-            <h2 className="mb-6 text-2xl font-light">核心功能</h2>
+            <h2 className="mb-6 text-2xl font-light text-black dark:text-white">核心功能</h2>
             <ul className="space-y-6">
               {features.map((f) => (
                 <li
                   key={f.title}
-                  className="rounded-lg border border-white/10 bg-white/[0.02] p-5"
+                  className="rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.02] p-5"
                 >
-                  <h3 className="mb-2 text-lg font-medium">{f.title}</h3>
-                  <p className="text-sm leading-relaxed text-white/65">
+                  <h3 className="mb-2 text-lg font-medium text-black dark:text-white">{f.title}</h3>
+                  <p className="text-sm leading-relaxed text-black/65 dark:text-white/65">
                     {f.body}
                   </p>
                 </li>
@@ -114,25 +114,25 @@ export default function WelcomePage() {
             </ul>
           </section>
 
-          <section className="mb-16 rounded-lg border border-white/10 bg-white/[0.02] p-10 text-center">
-            <p className="mb-2 text-white/60">准备好开始记录了吗？</p>
-            <p className="mb-6 text-sm text-white/40">
+          <section className="mb-16 rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.02] p-10 text-center">
+            <p className="mb-2 text-black/60 dark:text-white/60">准备好开始记录了吗？</p>
+            <p className="mb-6 text-sm text-black/40 dark:text-white/40">
               邮箱 + 密码注册，不需要信用卡
             </p>
             <Link
               href="/login"
-              className="inline-block rounded-full bg-white px-8 py-3 text-sm font-medium text-black transition hover:bg-white/90"
+              className="inline-block rounded-full bg-black px-8 py-3 text-sm font-medium text-white transition hover:bg-black/90 dark:bg-white dark:text-black dark:hover:bg-white/90"
             >
               登录 / 注册 →
             </Link>
           </section>
 
-          <footer className="border-t border-white/10 pt-8 text-xs text-white/40">
+          <footer className="border-t border-black/10 dark:border-white/10 pt-8 text-xs text-black/40 dark:text-white/40">
             <p>© 2026 Frank Ding · LifeFrame</p>
             <p className="mt-1">
               <Link
                 href={SITE_URL}
-                className="hover:text-white/60 transition"
+                className="hover:text-black/60 dark:hover:text-white/60 transition"
               >
                 {SITE_URL}
               </Link>

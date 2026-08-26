@@ -77,24 +77,24 @@ export default async function PublicPhotoPage({
         <header className="mb-6">
           <Link
             href="/welcome"
-            className="text-xs text-white/40 transition hover:text-white"
+            className="text-xs text-black/40 transition hover:text-black dark:text-white/40 dark:hover:text-white"
           >
             ← LifeFrame
           </Link>
-          <h1 className="mt-4 text-2xl font-light">{photo.filename}</h1>
+          <h1 className="mt-4 text-2xl font-light text-black dark:text-white">{photo.filename}</h1>
           {takenAt && (
-            <p className="mt-1 text-sm text-white/50">📅 {takenAt}</p>
+            <p className="mt-1 text-sm text-black/50 dark:text-white/50">📅 {takenAt}</p>
           )}
           {photo.location_name && (
-            <p className="text-sm text-white/50">📍 {photo.location_name}</p>
+            <p className="text-sm text-black/50 dark:text-white/50">📍 {photo.location_name}</p>
           )}
           {photo.visibility === 'unlisted' && (
-            <p className="mt-2 text-xs text-amber-300/80">
+            <p className="mt-2 text-xs text-amber-700/80 dark:text-amber-300/80">
               🔗 不列出的分享链接 — 不在搜索引擎中
             </p>
           )}
         </header>
-        <div className="overflow-hidden rounded-lg bg-white/[0.02]">
+        <div className="overflow-hidden rounded-lg bg-black/[0.02] dark:bg-white/[0.02]">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={photo.thumbnail_url || photo.public_url}
@@ -103,14 +103,14 @@ export default async function PublicPhotoPage({
           />
         </div>
         {photo.categories && photo.categories.length > 0 && (
-          <p className="mt-4 text-sm text-white/60">
+          <p className="mt-4 text-sm text-black/60 dark:text-white/60">
             🏷️ {photo.categories.join(' · ')}
           </p>
         )}
         <footer className="mt-12 text-center">
           <Link
             href="/welcome"
-            className="text-sm text-white/60 transition hover:text-white"
+            className="text-sm text-black/60 transition hover:text-black dark:text-white/60 dark:hover:text-white"
           >
             在 LifeFrame 上创建你自己的照片博物馆 →
           </Link>
