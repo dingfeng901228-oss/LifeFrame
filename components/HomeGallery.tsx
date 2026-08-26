@@ -33,6 +33,7 @@ export function HomeGallery() {
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [selected, setSelected] = useState<PhotoRow | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [onThisDayOpen, setOnThisDayOpen] = useState(false);
 
   useEffect(() => {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -117,6 +118,38 @@ export function HomeGallery() {
 
   const visibleCount = visiblePhotos.length;
 
+  // ── On This Day (§19 of 要件定義書) ─────────────────────────────
+  // Photos taken on today's month-day in any year. Grouped by year
+  // for the modal. Returns [] when no photos match — the trigger
+  // button stays hidden in that case.
+  const onThisDayGrouped = useMemo(() => {
+    const now = new Date();
+    const month = now.getMonth(); // 0-11
+    const day = now.getDate(); // 1-31
+
+    const matching = photos.filter((p) => {
+      const ts = p.taken_at || p.created_at;
+      if (!ts) return false;
+      const d = new Date(ts);
+      if (isNaN(d.getTime())) return false;
+      return d.getMonth() === month && d.getDate() === day;
+    });
+
+    const byYear = new Map<number, PhotoRow[]>();
+    for (const p of matching) {
+      const ts = p.taken_at || p.created_at;
+      const d = new Date(ts!);
+      const year = d.getFullYear();
+      const arr = byYear.get(year);
+      if (arr) arr.push(p);
+      else byYear.set(year, [p]);
+    }
+
+    return [...byYear.entries()]
+      .sort(([a], [b]) => b - a) // newest year first
+      .map(([year, yearPhotos]) => ({ year, photos: yearPhotos }));
+  }, [photos]);
+
   return (
     <>
       <div className="absolute inset-0 bottom-32">
@@ -145,6 +178,16 @@ export function HomeGallery() {
                 ? `${visibleCount} 张照片在 ${formatMonth(selectedDate)} ± ${TIMELINE_WINDOW_DAYS / 2} 天窗口内`
                 : `${photos.length} 张照片已点亮地点`}
         </p>
+        {onThisDayGrouped.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setOnThisDayOpen(true)}
+            className="pointer-events-auto mt-3 inline-flex items-center gap-1.5 rounded-full border border-cyan-400/30 bg-black/40 px-3 py-1.5 text-xs text-cyan-300/90 backdrop-blur-sm transition hover:border-cyan-400/60 hover:text-cyan-300"
+          >
+            📅 历史上这一天 · {onThisDayGrouped.length} 个年份 ·{' '}
+            {onThisDayGrouped.reduce((s, g) => s + g.photos.length, 0)} 张照片
+          </button>
+        )}
         {fetchError && (
           <p className="mt-3 max-w-md text-xs text-rose-300/90">
             ⚠ 加载照片失败：{fetchError}
@@ -335,6 +378,65 @@ export function HomeGallery() {
                 （分类编辑 + 删除功能下次迭代）
               </p>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* On This Day modal (§19). Same grid-of-thumbnails UX as the
+          gallery modal but filtered to today's month-day across all
+          years, grouped per year. Clicking a thumbnail closes this
+          modal and opens the photo detail modal. */}
+      {onThisDayOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm"
+          onClick={() => setOnThisDayOpen(false)}
+        >
+          <div
+            className="absolute inset-4 overflow-auto md:inset-12"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-6 flex items-center justify-between">
+              <h2 className="text-2xl font-light text-white">
+                📅{' '}
+                {new Date().getMonth() + 1}月{new Date().getDate()}日 · 历史上
+              </h2>
+              <button
+                type="button"
+                onClick={() => setOnThisDayOpen(false)}
+                className="rounded border border-white/20 px-3 py-1 text-sm text-white/70 hover:bg-white/10"
+              >
+                ✕ 关闭
+              </button>
+            </div>
+            {onThisDayGrouped.map((g) => (
+              <div key={g.year} className="mb-8">
+                <h3 className="mb-3 text-lg font-light text-white/80">
+                  {g.year} 年 · {g.photos.length} 张
+                </h3>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                  {g.photos.map((p) => (
+                    <button
+                      key={p.key}
+                      type="button"
+                      onClick={() => {
+                        setOnThisDayOpen(false);
+                        setSelected(p);
+                      }}
+                      className="aspect-square overflow-hidden rounded border border-white/10 transition hover:border-white/40"
+                      title={p.filename}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={p.public_url}
+                        alt={p.filename}
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
