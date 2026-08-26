@@ -22,33 +22,35 @@ type Props = {
   onClusterClick?: (indices: number[]) => void;
 };
 
+// Scale bounds. The lower bound is set so the ocean + countries
+// always fill the visible area; the upper bound lets the user zoom
+// deep enough to see a single country's borders in detail.
 const MIN_SCALE = 220;
-const MAX_SCALE = 1400;
-const INITIAL_ROTATION: [number, number] = [0, -22]; // lambda, phi in degrees
+const MAX_SCALE = 2400;
+// Angular rotation per second when autorotating.
 const ROTATE_DEG_PER_SEC = 3.6;
+// Drag sensitivity in degrees per pixel of pointer movement.
 const DRAG_SENSITIVITY = 0.32;
 
+type Size = { w: number; h: number };
+
 /**
- * Orthographic globe renderer.
+ * Fullscreen orthographic globe.
  *
- * Why we moved off cobe: cobe's texture is baked into its WebGL shader
- * and the d.ts surface has no `mapUrl` option. After two failed passes
- * trying to layer DOM/SVG country outlines on top of cobe, we replace
- * it entirely with d3-geo + SVG. Country outlines are real geometry
- * (rendered as SVG <path> from a TopoJSON FeatureCollection), photo
- * markers are SVG <circle> with native onClick handlers — so the click
- * pipeline no longer depends on forward-projection math lining up with
- * cobe's internal rotation matrix.
- *
- * Rotation state is a `[lambda, phi]` pair in degrees (lambda is
- * longitude, phi is latitude). d3-geo's `geoOrthographic().rotate([λ, φ])`
- * does the heavy lifting; we mutate λ/φ on drag and tick.
+ * The wrapper fills its parent (100% × 100%) so the globe can take
+ * the whole viewport. The SVG viewBox is centered on (0, 0) and
+ * matches the wrapper's pixel dimensions; a black <rect> fills the
+ * corners outside the ocean circle, which is what the user sees
+ * when the screen isn't square. The ocean circle's radius tracks
+ * the d3-geo projection scale so countries and the ocean zoom
+ * together — the previous version had a fixed ocean radius which
+ * meant the sphere "grew" past its outline when you scrolled in.
  */
 export function Globe({ markers = [], onMarkerSelect, onClusterClick }: Props = {}) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
-  const [size, setSize] = useState(700);
+  const [size, setSize] = useState<Size>({ w: 800, h: 800 });
   const [rotation, setRotation] =
-    useState<[number, number]>(INITIAL_ROTATION);
+    useState<[number, number]>([0, -22]);
   const [scale, setScale] = useState(360);
   const [autoRotate, setAutoRotate] = useState(true);
 
@@ -58,13 +60,18 @@ export function Globe({ markers = [], onMarkerSelect, onClusterClick }: Props = 
     rot: [number, number];
   } | null>(null);
 
-  // ── Resize observer → keep SVG dimensions in sync with wrapper ──
+  // ── Track wrapper size ─────────────────────────────────────────
+  // Now that the wrapper is full-bleed, the SVG and viewBox need
+  // both dimensions. The smaller of the two is also the natural
+  // cap on the ocean radius (a circular sphere can't be wider
+  // than the smaller viewport axis).
   useEffect(() => {
     if (!wrapperRef.current) return;
     const el = wrapperRef.current;
     const measure = () => {
-      const s = Math.min(el.clientWidth, el.clientHeight);
-      if (s > 0) setSize(s);
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (w > 0 && h > 0) setSize({ w, h });
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -72,12 +79,18 @@ export function Globe({ markers = [], onMarkerSelect, onClusterClick }: Props = 
     return () => ro.disconnect();
   }, []);
 
-  // ── Scale to fit initial wrapper size ───────────────────────────
+  // ── Initial scale matches the smaller viewport axis so the globe
+  //    fills that axis on first paint. When the user zooms in, the
+  //    scale increases; when the window resizes, the next measure
+  //    doesn't auto-rescale (the user's chosen zoom is preserved).
   useEffect(() => {
-    if (size <= 0) return;
-    const initialScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, size * 0.62));
+    if (size.w <= 0 || size.h <= 0) return;
+    const minDim = Math.min(size.w, size.h);
+    const initialScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, minDim * 0.46));
     setScale(initialScale);
-  }, [size]);
+    // We only want to set this once per layout, not on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [size.w === 0 && size.h === 0]);
 
   // ── Auto-rotation via requestAnimationFrame ─────────────────────
   useEffect(() => {
@@ -136,8 +149,8 @@ export function Globe({ markers = [], onMarkerSelect, onClusterClick }: Props = 
   // anything within ~28px of another marker merges into a cluster.
   // As the user zooms in (or clicks a cluster to zoom), markers
   // spread out and clusters split. Single-marker clusters render as
-  // individual dots; multi-marker clusters render as a circle with
-  // a count. Threshold is in screen px, not degrees — it works
+  // individual dots; multi-marker clusters render as a circle with a
+  // count. Threshold is in screen px, not degrees — it works
   // across the full zoom range because the projection is pixel-based.
   const CLUSTER_PX = 28;
   const clusters = useMemo(() => {
@@ -198,37 +211,47 @@ export function Globe({ markers = [], onMarkerSelect, onClusterClick }: Props = 
   // click events to the capture target (per Pointer Events spec), which
   // silently broke marker onClick. Without it, clicks fire on the
   // original target (the marker <g>) and the photo detail modal opens.
-  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0 && e.pointerType === 'mouse') return;
-    dragRef.current = {
-      x: e.clientX,
-      y: e.clientY,
-      rot: [...rotation],
-    };
-    setAutoRotate(false);
-    window.addEventListener('pointermove', handleWindowPointerMove);
-    window.addEventListener('pointerup', handleWindowPointerUp, { once: true });
-    window.addEventListener('pointercancel', handleWindowPointerUp, { once: true });
-  };
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0 && e.pointerType === 'mouse') return;
+      dragRef.current = {
+        x: e.clientX,
+        y: e.clientY,
+        rot: [...rotation],
+      };
+      setAutoRotate(false);
+      window.addEventListener('pointermove', handleWindowPointerMove);
+      window.addEventListener('pointerup', handleWindowPointerUp, {
+        once: true,
+      });
+      window.addEventListener('pointercancel', handleWindowPointerUp, {
+        once: true,
+      });
+    },
+    [rotation],
+  );
 
-  const handleWindowPointerMove = (e: PointerEvent) => {
-    const d = dragRef.current;
-    if (!d) return;
-    const dx = e.clientX - d.x;
-    const dy = e.clientY - d.y;
-    let lambda = (d.rot[0] + dx * DRAG_SENSITIVITY) % 360;
-    if (lambda > 180) lambda -= 360;
-    if (lambda < -180) lambda += 360;
-    const phi = Math.max(-90, Math.min(90, d.rot[1] - dy * DRAG_SENSITIVITY));
-    setRotation([lambda, phi]);
-  };
+  const handleWindowPointerMove = useCallback(
+    (e: PointerEvent) => {
+      const d = dragRef.current;
+      if (!d) return;
+      const dx = e.clientX - d.x;
+      const dy = e.clientY - d.y;
+      let lambda = (d.rot[0] + dx * DRAG_SENSITIVITY) % 360;
+      if (lambda > 180) lambda -= 360;
+      if (lambda < -180) lambda += 360;
+      const phi = Math.max(-90, Math.min(90, d.rot[1] - dy * DRAG_SENSITIVITY));
+      setRotation([lambda, phi]);
+    },
+    [],
+  );
 
-  const handleWindowPointerUp = () => {
+  const handleWindowPointerUp = useCallback(() => {
     dragRef.current = null;
     window.removeEventListener('pointermove', handleWindowPointerMove);
     window.removeEventListener('pointerup', handleWindowPointerUp);
     window.removeEventListener('pointercancel', handleWindowPointerUp);
-  };
+  }, []);
 
   // Cleanup on unmount.
   useEffect(() => {
@@ -240,39 +263,26 @@ export function Globe({ markers = [], onMarkerSelect, onClusterClick }: Props = 
   }, []);
 
   // ── Wheel zoom ──────────────────────────────────────────────────
-  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+  const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
     const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
     setScale((s) => Math.max(MIN_SCALE, Math.min(MAX_SCALE, s * factor)));
-  };
+  }, []);
 
-  // ── Click delegation ────────────────────────────────────────────
-  // setPointerCapture() above redirects the click event to the wrapper
-  // div (per the Pointer Events spec — once a pointer is captured, all
-  // subsequent events including click are dispatched to the capture
-  // target). The marker <g>'s own onClick therefore never fires. To
-  // still open the photo modal, listen for click on the wrapper and
-  // walk up from event.target to find the nearest marker (identified
-  // by data-marker-index).
-  // NOTE: this delegation handler is now removed — we no longer call
-  // setPointerCapture (see handlePointerDown), so the marker <g> click
-  // handlers below fire directly. The wrapper's no longer needs the
-  // delegation path.
+  // The ocean radius follows the projection scale so the visible
+  // "globe" stays in sync with the country outlines. We render a
+  // thin gap (2px) at the outline so the radial gradient on the
+  // ocean doesn't show through the SVG's circle stroke.
+  const oceanRadius = Math.max(0, scale - 2);
+  const svgWidth = size.w;
+  const svgHeight = size.h;
 
   return (
-    <div className="relative flex h-full w-full items-center justify-center select-none">
+    <div className="relative h-full w-full select-none">
       <div
         ref={wrapperRef}
-        className="relative overflow-hidden rounded-full"
+        className="relative h-full w-full"
         style={{
-          // Sized down from 85vh to 70vh so the Timeline below has room
-          // to render without overlapping the globe on desktop. The
-          // draggable Timeline needs more vertical real estate than the
-          // old click-only one (drag handle + bigger hit area), so we
-          // give the globe the top ~70% of the viewport.
-          width: 'min(70vh, 70vw, 760px)',
-          height: 'min(70vh, 70vw, 760px)',
-          aspectRatio: '1',
           touchAction: 'none',
           cursor: dragRef.current ? 'grabbing' : 'grab',
         }}
@@ -280,9 +290,9 @@ export function Globe({ markers = [], onMarkerSelect, onClusterClick }: Props = 
         onWheel={handleWheel}
       >
         <svg
-          width={size}
-          height={size}
-          viewBox={`-${size / 2} -${size / 2} ${size} ${size}`}
+          width={svgWidth}
+          height={svgHeight}
+          viewBox={`${-svgWidth / 2} ${-svgHeight / 2} ${svgWidth} ${svgHeight}`}
           style={{ display: 'block', overflow: 'visible' }}
         >
           <defs>
@@ -293,9 +303,23 @@ export function Globe({ markers = [], onMarkerSelect, onClusterClick }: Props = 
             </radialGradient>
           </defs>
 
-          {/* Ocean / sphere background */}
+          {/* Dark backdrop — fills the rectangular SVG outside the
+              circular ocean. The previous version had a circular
+              wrapper with overflow-hidden, so the user only ever
+              saw the ocean; here the corners are visible and need
+              to be a deliberate color, not whatever's behind the
+              page. Black matches the home page body bg. */}
+          <rect
+            x={-svgWidth / 2}
+            y={-svgHeight / 2}
+            width={svgWidth}
+            height={svgHeight}
+            fill="#000000"
+          />
+
+          {/* Ocean / sphere */}
           <circle
-            r={size / 2 - 2}
+            r={oceanRadius}
             fill="url(#oceanGrad)"
             stroke="rgba(255, 255, 255, 0.18)"
             strokeWidth={1}
@@ -389,6 +413,17 @@ export function Globe({ markers = [], onMarkerSelect, onClusterClick }: Props = 
             })}
           </g>
         </svg>
+      </div>
+
+      <div className="pointer-events-none absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-2">
+        <button
+          type="button"
+          onClick={() => setAutoRotate((v) => !v)}
+          className="pointer-events-auto rounded-full border border-white/20 bg-black/70 px-4 py-1.5 text-xs text-white/80 backdrop-blur-sm transition hover:bg-black/90"
+          aria-label={autoRotate ? '暂停旋转' : '继续旋转'}
+        >
+          {autoRotate ? '❚❚ 暂停' : '▶ 继续'}
+        </button>
       </div>
     </div>
   );

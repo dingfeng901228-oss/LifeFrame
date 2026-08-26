@@ -153,7 +153,7 @@ export function HomeGallery() {
 
   return (
     <>
-      <div className="absolute inset-0 bottom-32">
+      <div className="absolute inset-0">
         <Globe
           markers={markers}
           onMarkerSelect={(idx) => {
