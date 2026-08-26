@@ -3,7 +3,11 @@ import { NextResponse, type NextRequest } from 'next/server';
 
 /**
  * Middleware gate:
- * - /upload* requires an authenticated user; otherwise redirect to /login?next=…
+ * - / requires an authenticated user; otherwise redirect to /login?next=…
+ *   (per §24 of 要件定義書: "LifeFrame 默认是私人网站". Anyone visiting
+ *   the site without a session sees the login page. The home page is the
+ *   private dashboard; sharing photos publicly is Phase 2 scope.)
+ * - /upload* requires an authenticated user; same redirect
  * - /login while already authenticated redirects home
  *
  * Uses getSession() (local JWT validation only) instead of getUser() (which
@@ -49,8 +53,9 @@ export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const wantsUpload = path.startsWith('/upload');
   const wantsLogin = path.startsWith('/login');
+  const wantsHome = path === '/';
 
-  if (wantsUpload && !session) {
+  if (!session && (wantsUpload || wantsHome)) {
     const redirect = request.nextUrl.clone();
     redirect.pathname = '/login';
     redirect.searchParams.set('next', path);
@@ -68,5 +73,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/upload/:path*', '/login'],
+  matcher: ['/', '/upload/:path*', '/login'],
 };

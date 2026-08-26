@@ -16,6 +16,11 @@ type PhotoRow = {
   camera_make: string | null;
   camera_model: string | null;
   categories: string[] | null;
+  // Per §24 of 要件定義書: "实际位置在公开页面只显示 Tokyo, Japan，
+  // 甚至可以提供模糊位置（只显示城市，不显示具体地点）".
+  // Prefer this over lat/lng in the UI; fall back to rounded lat/lng
+  // when the photo was uploaded without going through Nominatim.
+  location_name: string | null;
 };
 
 const TIMELINE_WINDOW_DAYS = 60;
@@ -44,7 +49,7 @@ export function HomeGallery() {
         const { data, error } = await supabase
           .from('photos')
           .select(
-            'lat, lng, public_url, filename, taken_at, created_at, camera_make, camera_model, categories',
+            'key, lat, lng, public_url, filename, taken_at, created_at, camera_make, camera_model, categories, location_name',
           )
           .order('created_at', { ascending: false })
           .limit(500);
@@ -295,11 +300,15 @@ export function HomeGallery() {
                   📅 {new Date(selected.taken_at).toLocaleString('zh-CN')}
                 </p>
               )}
-              {selected.lat != null && selected.lng != null && (
+              {selected.location_name ? (
                 <p>
-                  📍 {selected.lat.toFixed(4)}, {selected.lng.toFixed(4)}
+                  📍 {selected.location_name}
                 </p>
-              )}
+              ) : selected.lat != null && selected.lng != null ? (
+                <p>
+                  � {selected.lat.toFixed(2)}, {selected.lng.toFixed(2)}
+                </p>
+              ) : null}
               {(selected.camera_make || selected.camera_model) && (
                 <p>
                   📷{' '}
