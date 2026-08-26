@@ -15,6 +15,11 @@ export type GlobeMarker = {
 type Props = {
   markers?: GlobeMarker[];
   onMarkerSelect?: (index: number) => void;
+  // Called when the user clicks a multi-photo cluster. The argument
+  // is the list of marker indices that fall inside the cluster
+  // (in the same order as `markers`). The parent maps these to actual
+  // Photo rows and shows them in whatever modal/grid it likes.
+  onClusterClick?: (indices: number[]) => void;
 };
 
 const MIN_SCALE = 220;
@@ -39,7 +44,7 @@ const DRAG_SENSITIVITY = 0.32;
  * longitude, phi is latitude). d3-geo's `geoOrthographic().rotate([λ, φ])`
  * does the heavy lifting; we mutate λ/φ on drag and tick.
  */
-export function Globe({ markers = [], onMarkerSelect }: Props = {}) {
+export function Globe({ markers = [], onMarkerSelect, onClusterClick }: Props = {}) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState(700);
   const [rotation, setRotation] =
@@ -173,12 +178,17 @@ export function Globe({ markers = [], onMarkerSelect }: Props = {}) {
     return out;
   }, [projectedMarkers]);
 
-  // Cluster click → zoom in by 1.8×. The next render re-clusters at
-  // the new scale; tight clusters naturally split. Capped by MAX_SCALE
-  // so we don't run off the rails on repeated clicks.
-  const zoomIntoCluster = useCallback(() => {
-    setScale((s) => Math.min(s * 1.8, MAX_SCALE));
-  }, []);
+  // Cluster click — we no longer auto-zoom on cluster click, because
+  // that hid the photos behind a generic "3" badge. Instead we hand
+  // the cluster's marker indices to the parent via onClusterClick, and
+  // the parent opens a modal listing the photos. Auto-zoom still works
+  // via mouse wheel and (eventually) pinch gesture, just not on click.
+  const handleClusterClick = useCallback(
+    (indices: number[]) => {
+      onClusterClick?.(indices);
+    },
+    [onClusterClick],
+  );
 
   // ── Drag handling (pointer events for unified mouse/touch) ─────
   // Window-level pointermove/pointerup listeners are attached on
@@ -347,7 +357,7 @@ export function Globe({ markers = [], onMarkerSelect }: Props = {}) {
                   key={`c-${c.i}`}
                   transform={`translate(${c.cx}, ${c.cy})`}
                   style={{ cursor: 'pointer' }}
-                  onClick={zoomIntoCluster}
+                  onClick={() => handleClusterClick(c.indices)}
                 >
                   {/* Outer halo for affordance */}
                   <circle

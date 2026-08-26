@@ -34,6 +34,8 @@ export function HomeGallery() {
   const [selected, setSelected] = useState<PhotoRow | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [onThisDayOpen, setOnThisDayOpen] = useState(false);
+  const [clusterOpen, setClusterOpen] = useState(false);
+  const [clusterPhotos, setClusterPhotos] = useState<PhotoRow[]>([]);
 
   useEffect(() => {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -158,6 +160,18 @@ export function HomeGallery() {
             const photo = visiblePhotos[idx];
             if (photo) setSelected(photo);
           }}
+          onClusterClick={(indices) => {
+            const photos = indices
+              .map((i) => visiblePhotos[i])
+              .filter(
+                (p): p is PhotoRow & { lat: number; lng: number } =>
+                  Boolean(p),
+              );
+            if (photos.length > 0) {
+              setClusterPhotos(photos);
+              setClusterOpen(true);
+            }
+          }}
         />
       </div>
 
@@ -275,6 +289,59 @@ export function HomeGallery() {
               <p className="pt-2 text-xs text-white/30">
                 （分类编辑 + 删除功能下次迭代）
               </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cluster modal — opened when the user clicks a multi-photo
+          cluster on the globe. Shows the N photos that fall inside
+          the cluster as a grid of thumbnails, so the cluster's
+          "3" badge becomes a way to actually view those 3 photos
+          instead of an opaque count. Click a thumbnail to close
+          this modal and open the photo detail modal. */}
+      {clusterOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm"
+          onClick={() => setClusterOpen(false)}
+        >
+          <div
+            className="absolute inset-4 overflow-auto md:inset-12"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-6 flex items-center justify-between">
+              <h2 className="text-2xl font-light text-white">
+                📍 同地点照片 · {clusterPhotos.length} 张
+              </h2>
+              <button
+                type="button"
+                onClick={() => setClusterOpen(false)}
+                className="rounded border border-white/20 px-3 py-1 text-sm text-white/70 hover:bg-white/10"
+              >
+                ✕ 关闭
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+              {clusterPhotos.map((p) => (
+                <button
+                  key={p.key}
+                  type="button"
+                  onClick={() => {
+                    setClusterOpen(false);
+                    setSelected(p);
+                  }}
+                  className="aspect-square overflow-hidden rounded border border-white/10 transition hover:border-white/40"
+                  title={p.filename}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={p.thumbnail_url || p.public_url}
+                    alt={p.filename}
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                  />
+                </button>
+              ))}
             </div>
           </div>
         </div>
