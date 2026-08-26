@@ -1,12 +1,66 @@
+import type { Metadata } from 'next';
 import './globals.css';
 import Link from 'next/link';
 import { PWARegistrar } from '@/components/PWARegistrar';
 import { AuthButton } from '@/components/AuthButton';
 
-export const metadata = {
-  title: 'LifeFrame · 用照片，留下生活的痕迹',
-  description: '个人照片生活记录与时空记忆展示网站',
+const SITE_URL = 'https://lifeframe.frank2025.com';
+const DESCRIPTION =
+  '个人照片生活记录与时空记忆展示网站。3D 地球仪 + 时间轴 + EXIF 自动读取，把你的照片按时间和空间重新组织成可探索的「生活博物馆」。';
+
+export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: 'LifeFrame — 用照片，留下生活的痕迹',
+    template: '%s · LifeFrame',
+  },
+  description: DESCRIPTION,
   applicationName: 'LifeFrame',
+  authors: [{ name: 'Frank Ding' }],
+  keywords: [
+    'LifeFrame',
+    '照片',
+    '回忆',
+    '地球仪',
+    '时间轴',
+    'EXIF',
+    '照片管理',
+    '记忆博物馆',
+    '个人相册',
+    'Life Journal',
+    'photo journal',
+  ],
+  openGraph: {
+    type: 'website',
+    locale: 'zh_CN',
+    url: SITE_URL,
+    siteName: 'LifeFrame',
+    title: 'LifeFrame — 用照片，留下生活的痕迹',
+    description: DESCRIPTION,
+    images: [
+      {
+        url: '/icon-512.png',
+        width: 512,
+        height: 512,
+        alt: 'LifeFrame Logo',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'LifeFrame — 用照片，留下生活的痕迹',
+    description: DESCRIPTION,
+    images: ['/icon-512.png'],
+  },
+  // Most pages are auth-gated; /welcome overrides to index: true.
+  robots: { index: false, follow: true },
+  icons: {
+    icon: [
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: '/icon-192.png',
+  },
 };
 
 // Next.js App Router: `viewport` export generates <meta name="theme-color">
