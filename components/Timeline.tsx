@@ -177,10 +177,10 @@ export function Timeline({
       {/* Compact header — just the date range. No instructions, no
           "筛选：..." copy. The interaction is self-evident once you
           touch the bar. */}
-      <div className="mb-1.5 flex items-center justify-between text-[10px] tracking-wider text-white/40 tabular-nums">
+      <div className="mb-1.5 flex items-center justify-between text-[10px] tracking-wider text-black/40 dark:text-white/40 tabular-nums">
         <span>{formatShort(minDate)}</span>
         {selectedDate && (
-          <span className="text-cyan-300/80">
+          <span className="text-cyan-600 dark:text-cyan-300/80">
             {formatShort(selectedDate)} ± {Math.round(windowDays / 2)} 天
           </span>
         )}
@@ -203,18 +203,18 @@ export function Timeline({
                 marginBottom: '8px',
               }}
             >
-              <div className="flex gap-1.5 rounded-lg border border-cyan-400/40 bg-black/85 p-1.5 shadow-lg backdrop-blur-sm">
+              <div className="flex gap-1.5 rounded-lg border border-cyan-500 dark:border-cyan-400/40 bg-white/95 dark:bg-black/85 p-1.5 shadow-lg backdrop-blur-sm">
                 {visiblePositions.slice(0, 3).map((p) => (
                   <img
                     key={p.key}
                     src={p.thumbnailUrl || p.publicUrl}
                     alt={p.filename}
-                    className="h-12 w-12 rounded object-cover ring-1 ring-white/10"
+                    className="h-12 w-12 rounded object-cover ring-1 ring-black/10 dark:ring-white/10"
                     title={p.filename}
                   />
                 ))}
                 {visiblePositions.length > 3 && (
-                  <div className="flex h-12 w-12 items-center justify-center rounded bg-black/60 text-xs text-white/70 ring-1 ring-white/10">
+                  <div className="flex h-12 w-12 items-center justify-center rounded bg-white/95 dark:bg-black/60 text-xs text-black/65 dark:text-white/70 ring-1 ring-black/10 dark:ring-white/10">
                     +{visiblePositions.length - 3}
                   </div>
                 )}
@@ -226,10 +226,10 @@ export function Timeline({
         <div
           ref={trackRef}
           onPointerDown={handlePointerDown}
-          className={`relative h-1.5 touch-none select-none rounded-full bg-white/10 transition ${
+          className={`relative h-1.5 touch-none select-none rounded-full bg-black/10 dark:bg-white/10 transition ${
             dragging
-              ? 'cursor-grabbing bg-white/15'
-              : 'cursor-pointer hover:bg-white/15'
+              ? 'cursor-grabbing bg-black/15 dark:bg-white/15'
+              : 'cursor-pointer hover:bg-black/15 dark:hover:bg-white/15'
           }`}
         >
           {/* Photo keyframe marks — chapter-marker style vertical
@@ -240,7 +240,7 @@ export function Timeline({
           {photoPositions.map((p) => (
             <div
               key={`mark-${p.key}`}
-              className="pointer-events-none absolute h-2 w-0.5 -translate-x-1/2 rounded-sm bg-cyan-400/70"
+              className="pointer-events-none absolute h-2 w-0.5 -translate-x-1/2 rounded-sm bg-cyan-600/80 dark:bg-cyan-400/70"
               style={{
                 left: `${p.pos}%`,
                 top: '-2px',
@@ -252,7 +252,7 @@ export function Timeline({
           {/* Selected range overlay — the ±windowDays/2 highlight. */}
           {rangeStart !== null && rangeWidth !== null && (
             <div
-              className="pointer-events-none absolute top-0 bottom-0 rounded-full bg-cyan-400/40"
+              className="pointer-events-none absolute top-0 bottom-0 rounded-full bg-cyan-500/40 dark:bg-cyan-400/40"
               style={{
                 left: `${rangeStart}%`,
                 width: `${rangeWidth}%`,
@@ -266,7 +266,7 @@ export function Timeline({
               the drag instead of this element swallowing it. */}
           {handlePos !== null && (
             <div
-              className={`pointer-events-none absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-400 shadow-[0_0_6px_rgba(103,232,249,0.7)] ring-2 ring-black/40 transition-transform ${
+              className={`pointer-events-none absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-500 dark:bg-cyan-400 shadow-[0_0_6px_rgba(8,145,178,0.5)] dark:shadow-[0_0_6px_rgba(103,232,249,0.7)] ring-2 ring-white/40 dark:ring-black/40 transition-transform ${
                 dragging ? 'scale-125' : 'scale-100'
               }`}
               style={{ left: `${handlePos}%` }}
@@ -281,8 +281,9 @@ export function Timeline({
         {selectedDate && (
           <button
             type="button"
+            onChange={() => onChange(null)}
             onClick={() => onChange(null)}
-            className="text-cyan-300/70 transition hover:text-cyan-300"
+            className="text-cyan-600 dark:text-cyan-300/70 transition hover:text-cyan-700 dark:hover:text-cyan-300"
           >
             ✕ 清除筛选
           </button>

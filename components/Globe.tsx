@@ -323,9 +323,9 @@ export function Globe({ markers = [], onMarkerSelect, onClusterClick }: Props = 
         >
           <defs>
             <radialGradient id="oceanGrad" cx="38%" cy="35%" r="75%">
-              <stop offset="0%" stopColor="#152037" />
-              <stop offset="65%" stopColor="#0a0e1a" />
-              <stop offset="100%" stopColor="#04060d" />
+              <stop offset="0%" stopColor="var(--ocean-light)" />
+              <stop offset="65%" stopColor="var(--ocean-mid)" />
+              <stop offset="100%" stopColor="var(--ocean-dark)" />
             </radialGradient>
           </defs>
 
@@ -334,20 +334,20 @@ export function Globe({ markers = [], onMarkerSelect, onClusterClick }: Props = 
               wrapper with overflow-hidden, so the user only ever
               saw the ocean; here the corners are visible and need
               to be a deliberate color, not whatever's behind the
-              page. Black matches the home page body bg. */}
+              page. Color comes from --bg-primary in globals.css. */}
           <rect
             x={-svgWidth / 2}
             y={-svgHeight / 2}
             width={svgWidth}
             height={svgHeight}
-            fill="#000000"
+            fill="var(--bg-primary)"
           />
 
           {/* Ocean / sphere */}
           <circle
             r={oceanRadius}
             fill="url(#oceanGrad)"
-            stroke="rgba(255, 255, 255, 0.18)"
+            stroke="var(--ocean-rim)"
             strokeWidth={1}
           />
 
@@ -357,8 +357,8 @@ export function Globe({ markers = [], onMarkerSelect, onClusterClick }: Props = 
               <path
                 key={c.id}
                 d={c.d}
-                fill="rgba(35, 48, 80, 0.85)"
-                stroke="rgba(103, 232, 249, 0.55)"
+                fill="var(--country-fill)"
+                stroke="var(--country-stroke)"
                 strokeWidth={0.6}
                 vectorEffect="non-scaling-stroke"
               />
@@ -387,14 +387,14 @@ export function Globe({ markers = [], onMarkerSelect, onClusterClick }: Props = 
                     <circle r={18} fill="transparent" pointerEvents="all" />
                     <circle
                       r={9}
-                      fill="rgba(103, 232, 249, 0.22)"
-                      stroke="rgba(103, 232, 249, 0.5)"
+                      fill="var(--accent-soft)"
+                      stroke="var(--marker-stroke)"
                       strokeWidth={1}
                       pointerEvents="none"
                     />
                     <circle
                       r={3.5}
-                      fill="rgb(103, 232, 249)"
+                      fill="var(--marker-fill)"
                       pointerEvents="none"
                     />
                   </g>
@@ -412,14 +412,16 @@ export function Globe({ markers = [], onMarkerSelect, onClusterClick }: Props = 
                   {/* Outer halo for affordance */}
                   <circle
                     r={r + 6}
-                    fill="rgba(103, 232, 249, 0.12)"
+                    fill="var(--accent-soft)"
                     pointerEvents="all"
                   />
                   {/* Cluster body */}
                   <circle
                     r={r}
-                    fill="rgba(103, 232, 249, 0.45)"
-                    stroke="rgba(103, 232, 249, 0.9)"
+                    fill="var(--accent)"
+                    fillOpacity="0.45"
+                    stroke="var(--marker-stroke)"
+                    strokeOpacity="0.9"
                     strokeWidth={1.5}
                     pointerEvents="none"
                   />
@@ -429,7 +431,7 @@ export function Globe({ markers = [], onMarkerSelect, onClusterClick }: Props = 
                     dy="0.35em"
                     fontSize={Math.min(11 + Math.log10(c.count) * 6, 18)}
                     fontWeight="bold"
-                    fill="rgb(255, 255, 255)"
+                    fill="var(--bg-primary)"
                     style={{ pointerEvents: 'none', userSelect: 'none' }}
                   >
                     {c.count}

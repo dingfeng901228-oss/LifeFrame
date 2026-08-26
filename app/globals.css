@@ -23,7 +23,20 @@
   --border-primary: rgba(255, 255, 255, 0.1);
   --accent: #67e8f9;
   --accent-hover: #22d3ee;
+  --accent-soft: rgba(103, 232, 249, 0.22);
   --shadow: rgba(0, 0, 0, 0.4);
+
+  /* Globe SVG tokens — used in components/Globe.tsx as inline
+     fill="var(--…)" so the ocean, countries, and markers all
+     swap when the theme flips. */
+  --ocean-light: #152037;
+  --ocean-mid: #0a0e1a;
+  --ocean-dark: #04060d;
+  --country-fill: rgba(35, 48, 80, 0.85);
+  --country-stroke: rgba(103, 232, 249, 0.55);
+  --marker-stroke: rgba(103, 232, 249, 0.5);
+  --marker-fill: rgb(103, 232, 249);
+  --ocean-rim: rgba(255, 255, 255, 0.18);
 }
 
 .light {
@@ -36,7 +49,19 @@
   --border-primary: rgba(0, 0, 0, 0.1);
   --accent: #0891b2;
   --accent-hover: #0e7490;
+  --accent-soft: rgba(8, 145, 178, 0.22);
   --shadow: rgba(0, 0, 0, 0.1);
+
+  /* Globe SVG tokens — light mode values. Slightly darker accent
+     so cyan markers stay visible on a near-white background. */
+  --ocean-light: #c8e0f5;
+  --ocean-mid: #b0d4eb;
+  --ocean-dark: #98c8e1;
+  --country-fill: rgba(150, 190, 220, 0.7);
+  --country-stroke: rgba(8, 145, 178, 0.6);
+  --marker-stroke: rgba(8, 145, 178, 0.6);
+  --marker-fill: rgb(8, 145, 178);
+  --ocean-rim: rgba(0, 0, 0, 0.15);
 }
 
 html,

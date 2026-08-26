@@ -176,13 +176,13 @@ export function HomeGallery() {
       </div>
 
       <div className="pointer-events-none absolute inset-x-0 top-24 flex flex-col items-center px-6 text-center">
-        <p className="text-xs tracking-[0.4em] text-white/50 uppercase">
+        <p className="text-xs tracking-[0.4em] text-black/50 dark:text-white/50 uppercase">
           写真で、暮らしの軌跡を残す
         </p>
-        <h1 className="mt-3 text-2xl font-light text-white md:text-3xl">
+        <h1 className="mt-3 text-2xl font-light text-black dark:text-white md:text-3xl">
           用照片，留下生活的痕迹。
         </h1>
-        <p className="mt-2 max-w-sm text-sm text-white/50">
+        <p className="mt-2 max-w-sm text-sm text-black/50 dark:text-white/50">
           {loading
             ? '加载中…'
             : photos.length === 0
@@ -195,17 +195,17 @@ export function HomeGallery() {
           <button
             type="button"
             onClick={() => setOnThisDayOpen(true)}
-            className="pointer-events-auto mt-3 inline-flex items-center gap-1.5 rounded-full border border-cyan-400/30 bg-black/40 px-3 py-1.5 text-xs text-cyan-300/90 backdrop-blur-sm transition hover:border-cyan-400/60 hover:text-cyan-300"
+            className="pointer-events-auto mt-3 inline-flex items-center gap-1.5 rounded-full border border-cyan-500/40 dark:border-cyan-400/30 bg-white/95 dark:bg-black/40 px-3 py-1.5 text-xs text-cyan-700 dark:text-cyan-300/90 backdrop-blur-sm transition hover:border-cyan-500 dark:hover:border-cyan-400/60 hover:text-cyan-700 dark:hover:text-cyan-300"
           >
             📅 历史上这一天 · {onThisDayGrouped.length} 个年份 ·{' '}
             {onThisDayGrouped.reduce((s, g) => s + g.photos.length, 0)} 张照片
           </button>
         )}
         {fetchError && (
-          <p className="mt-3 max-w-md text-xs text-rose-300/90">
-            ⚠ 加载照片失败：{fetchError}
+          <p className="mt-3 max-w-md text-xs text-rose-700 dark:text-rose-300/90">
+            � 加载照片失败：{fetchError}
             <br />
-            <span className="text-white/40">
+            <span className="text-black/40 dark:text-white/40">
               检查 Supabase URL/anon key 是否在 Vercel Environment Variables 配齐。
             </span>
           </p>
