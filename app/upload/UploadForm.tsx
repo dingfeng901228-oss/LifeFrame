@@ -4,191 +4,258 @@ import { useRef, useState } from 'react';
 import { extractExif, type PhotoExif } from '@/lib/exif';
 import { MapPicker, type PickedLocation } from '@/components/MapPicker';
 
-type Status = 'idle' | 'ready' | 'signing' | 'uploading' | 'done' | 'error';
+const MAX_BATCH = 30;
+const MAX_CONCURRENCY = 3;
+
+type FileStatus = 'pending' | 'extracting' | 'ready' | 'uploading' | 'done' | 'error';
+
+type QueueItem = {
+  id: string;
+  file: File;
+  exif: PhotoExif | null;
+  takenAtManual: string;
+  status: FileStatus;
+  error?: string;
+  key?: string;
+  publicUrl?: string;
+};
+
+type BatchStatus =
+  | 'idle'
+  | 'ready'
+  | 'uploading'
+  | 'done'
+  | 'partial'
+  | 'error';
 
 export function UploadForm() {
-  const [status, setStatus] = useState<Status>('idle');
-  const [error, setError] = useState<string | null>(null);
-  const [key, setKey] = useState<string | null>(null);
-  const [publicUrl, setPublicUrl] = useState<string | null>(null);
-  const [fileName, setFileName] = useState<string | null>(null);
-  const [fileSize, setFileSize] = useState<number | null>(null);
-  const [exif, setExif] = useState<PhotoExif | null>(null);
+  const [batchStatus, setBatchStatus] = useState<BatchStatus>('idle');
+  const [queue, setQueue] = useState<QueueItem[]>([]);
   const [picked, setPicked] = useState<PickedLocation | null>(null);
-  const [takenAtManual, setTakenAtManual] = useState<string>('');
   const [mapOpen, setMapOpen] = useState(false);
-  const [file, setFile] = useState<File | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function onChange(e: React.ChangeEvent<HTMLInputElement>) {
     setError(null);
-    setKey(null);
-    setPublicUrl(null);
-    setExif(null);
-    setPicked(null);
-    setTakenAtManual('');
-    const f = e.target.files?.[0];
-    if (!f) {
-      setFile(null);
-      setFileName(null);
-      setFileSize(null);
-      setStatus('idle');
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) {
+      setQueue([]);
+      setBatchStatus('idle');
       return;
     }
-    setFile(f);
-    setFileName(f.name);
-    setFileSize(f.size);
-
-    try {
-      // Read EXIF header only (fast) so the user can see GPS + camera + time
-      // and decide whether to override before clicking upload.
-      const exifData = await extractExif(f);
-      setExif(exifData);
-      if (exifData.takenAt) {
-        setTakenAtManual(exifData.takenAt.slice(0, 16));
-      }
-    } catch {
-      // ignore EXIF errors — we still let the user upload
+    if (files.length > MAX_BATCH) {
+      setError(`最多 ${MAX_BATCH} 张，你选了 ${files.length} 张`);
+      // Reset the input so the user can re-pick
+      if (inputRef.current) inputRef.current.value = '';
+      return;
     }
-    setStatus('ready');
+
+    // Seed the queue. Items start as 'extracting' until EXIF is read.
+    const items: QueueItem[] = files.map((f, i) => ({
+      id: `${Date.now()}-${i}-${f.name}`,
+      file: f,
+      exif: null,
+      takenAtManual: '',
+      status: 'extracting',
+    }));
+    setQueue(items);
+    setBatchStatus('ready');
+
+    // Read EXIF for all files in parallel (fast — header-only reads).
+    // We mutate `items` in place via index and re-publish the queue
+    // after each item flips to 'ready' so the UI updates incrementally.
+    await Promise.all(
+      items.map(async (_, i) => {
+        try {
+          const exifData = await extractExif(items[i].file);
+          items[i].exif = exifData;
+          if (exifData.takenAt) {
+            items[i].takenAtManual = exifData.takenAt.slice(0, 16);
+          }
+        } catch {
+          // No EXIF — that's fine, file will just upload without GPS/time.
+        }
+        items[i].status = 'ready';
+        setQueue([...items]);
+      }),
+    );
   }
 
-  async function doUpload() {
-    if (!file) return;
-    setStatus('signing');
-    setError(null);
+  async function uploadOne(
+    item: QueueItem,
+    batchPicked: PickedLocation | null,
+  ): Promise<void> {
+    setQueue((q) =>
+      q.map((it) =>
+        it.id === item.id ? { ...it, status: 'uploading' } : it,
+      ),
+    );
     try {
-      // Final payload: picked location overrides EXIF GPS, manual time
-      // overrides EXIF DateTimeOriginal.
-      const finalLat = picked?.lat ?? exif?.lat;
-      const finalLng = picked?.lng ?? exif?.lng;
-      const finalTaken = takenAtManual
-        ? new Date(takenAtManual).toISOString()
-        : exif?.takenAt;
+      // Final payload: batch-level picked location overrides EXIF GPS
+      // for every photo. Per-photo manual time isn't exposed in batch
+      // mode (too much UI for a 30-photo flow); EXIF DateTimeOriginal
+      // is used when available.
+      const finalLat = batchPicked?.lat ?? item.exif?.lat;
+      const finalLng = batchPicked?.lng ?? item.exif?.lng;
+      const finalTaken = item.takenAtManual
+        ? new Date(item.takenAtManual).toISOString()
+        : item.exif?.takenAt;
 
       const signRes = await fetch('/api/upload-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          filename: file.name,
-          contentType: file.type || 'application/octet-stream',
+          filename: item.file.name,
+          contentType: item.file.type || 'application/octet-stream',
           exif: {
             takenAt: finalTaken,
             lat: finalLat,
             lng: finalLng,
-            make: exif?.make,
-            model: exif?.model,
-            locationName: picked?.name,
+            make: item.exif?.make,
+            model: item.exif?.model,
+            locationName: batchPicked?.name,
           },
         }),
       });
       if (!signRes.ok) {
         const text = await signRes.text();
-        throw new Error(`signing failed (${signRes.status}): ${text}`);
+        throw new Error(`signing ${signRes.status}: ${text.slice(0, 120)}`);
       }
       const { url, key, publicUrl } = (await signRes.json()) as {
         url: string;
         key: string;
         publicUrl: string;
       };
-      setKey(key);
 
-      setStatus('uploading');
-      // SDK puts x-amz-meta-* into the URL query string; R2 applies them.
-      // We only need to PUT the file body.
       const put = await fetch(url, {
         method: 'PUT',
-        body: file,
+        body: item.file,
       });
       if (!put.ok) {
         const text = await put.text();
-        throw new Error(`upload failed (${put.status}): ${text}`);
+        throw new Error(`PUT ${put.status}: ${text.slice(0, 120)}`);
       }
 
-      setPublicUrl(publicUrl);
-      setStatus('done');
+      setQueue((q) =>
+        q.map((it) =>
+          it.id === item.id
+            ? { ...it, status: 'done', key, publicUrl }
+            : it,
+        ),
+      );
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      setStatus('error');
+      const msg = err instanceof Error ? err.message : String(err);
+      setQueue((q) =>
+        q.map((it) =>
+          it.id === item.id ? { ...it, status: 'error', error: msg } : it,
+        ),
+      );
+      throw err; // propagate so Promise.allSettled can count the failure
+    }
+  }
+
+  async function doUpload() {
+    if (queue.length === 0) return;
+    setBatchStatus('uploading');
+    setError(null);
+
+    // Chunked concurrency: MAX_CONCURRENCY PUTs in flight at once. R2
+    // is happy with a few parallel uploads but 30 simultaneous PUTs
+    // would saturate the connection pool.
+    const results: PromiseSettledResult<void>[] = [];
+    for (let i = 0; i < queue.length; i += MAX_CONCURRENCY) {
+      const chunk = queue.slice(i, i + MAX_CONCURRENCY);
+      const settled = await Promise.allSettled(
+        chunk.map((item) => uploadOne(item, picked)),
+      );
+      results.push(...settled);
+    }
+
+    const failures = results.filter((r) => r.status === 'rejected').length;
+    if (failures === 0) {
+      setBatchStatus('done');
+    } else if (failures === queue.length) {
+      setBatchStatus('error');
+    } else {
+      setBatchStatus('partial');
     }
   }
 
   function reset() {
-    setStatus('idle');
-    setError(null);
-    setKey(null);
-    setPublicUrl(null);
-    setFileName(null);
-    setFileSize(null);
-    setExif(null);
+    setBatchStatus('idle');
+    setQueue([]);
     setPicked(null);
-    setTakenAtManual('');
-    setFile(null);
+    setError(null);
     if (inputRef.current) inputRef.current.value = '';
   }
 
-  const busy = status === 'signing' || status === 'uploading';
-  const showPreUpload = file && !busy && status !== 'done';
-  const showUploadBtn = status === 'ready';
+  const doneCount = queue.filter((q) => q.status === 'done').length;
+  const errorCount = queue.filter((q) => q.status === 'error').length;
+  const busy = batchStatus === 'uploading';
+  const showPickers =
+    queue.length > 0 && batchStatus !== 'uploading' && batchStatus !== 'done';
 
   return (
     <div className="space-y-6">
-      {/* File input */}
+      {/* File input — `multiple` enables batch selection */}
       <label className="block">
-        <span className="sr-only">选择图片</span>
+        <span className="sr-only">选择图片（最多 {MAX_BATCH} 张）</span>
         <input
           ref={inputRef}
           type="file"
           accept="image/*"
+          multiple
           onChange={onChange}
           disabled={busy}
           className="block w-full cursor-pointer rounded border border-white/15 bg-white/5 px-3 py-3 text-sm text-white file:mr-3 file:rounded file:border-0 file:bg-white file:px-3 file:py-2 file:text-black hover:bg-white/10 disabled:opacity-50"
         />
       </label>
 
+      <div className="text-xs text-white/40">一次最多 {MAX_BATCH} 张</div>
+
       <div className="min-h-6 text-sm">
-        {status === 'idle' && <span className="text-white/40">等选择</span>}
-        {status === 'ready' && (
+        {batchStatus === 'idle' && <span className="text-white/40">等选择</span>}
+        {batchStatus === 'ready' && (
           <span className="text-sky-300">
-            已读取 EXIF
-            {fileName ? ` · ${fileName}` : ''}
-            {fileSize != null ? ` · ${(fileSize / 1024).toFixed(1)} KB` : ''}
-            {' '}— 可改时间/地点后点上传
+            已读取 {queue.length} 张 EXIF — 可改地点后点上传
           </span>
         )}
-        {status === 'signing' && (
-          <span className="text-sky-300">向 R2 申请签名 URL…</span>
+        {batchStatus === 'uploading' && (
+          <span className="text-sky-300">
+            上传中… {doneCount}/{queue.length}
+            {errorCount > 0 && (
+              <span className="ml-2 text-rose-300">失败 {errorCount}</span>
+            )}
+          </span>
         )}
-        {status === 'uploading' && <span className="text-sky-300">PUT 到 R2…</span>}
-        {status === 'done' && (
+        {batchStatus === 'done' && (
           <span className="text-emerald-300">
-            上传成功 ✅{fileName ? ` · ${fileName}` : ''}
-            {fileSize != null ? ` · ${(fileSize / 1024).toFixed(1)} KB` : ''}
+            全部上传成功 ✅ {queue.length} 张
           </span>
         )}
-        {status === 'error' && <span className="text-rose-300">失败：{error}</span>}
+        {batchStatus === 'partial' && (
+          <span className="text-amber-300">
+            部分成功：{doneCount} ✅, {errorCount} ❌
+          </span>
+        )}
+        {batchStatus === 'error' && (
+          <span className="text-rose-300">批量上传失败，请看下方列表</span>
+        )}
       </div>
 
-      {/* Manual time override — only shown before upload so the user can
-          decide what to send. */}
-      {showPreUpload && (
-        <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3 text-xs">
-          <p className="mb-2 text-white/50">拍摄时间（可选 — 优先用 EXIF）</p>
-          <input
-            type="datetime-local"
-            value={takenAtManual}
-            onChange={(e) => setTakenAtManual(e.target.value)}
-            className="rounded border border-white/15 bg-white/5 px-2 py-1 text-xs text-white"
-          />
+      {error && (
+        <div className="rounded-lg border border-rose-500/30 bg-rose-900/20 p-3 text-sm text-rose-300">
+          {error}
         </div>
       )}
 
-      {/* Map picker — only shown before upload so picking a location
-          actually flows into the upload payload. */}
-      {showPreUpload && (
+      {/* Batch-level location picker. If unset, each photo falls back
+          to its own EXIF GPS. */}
+      {showPickers && (
         <div className="rounded-lg border border-white/10 bg-white/[0.02] p-4 text-sm">
           <p className="mb-2 text-white/50">
-            拍摄地点（可选 — 优先用 EXIF GPS）
+            拍摄地点（整批共用 — 可选；不选则每张用各自 EXIF GPS）
           </p>
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 flex-1">
@@ -202,13 +269,9 @@ export function UploadForm() {
                     ({picked.lat.toFixed(4)}, {picked.lng.toFixed(4)})
                   </span>
                 </span>
-              ) : exif?.lat != null && exif?.lng != null ? (
-                <span className="text-white/60">
-                  📍 EXIF GPS: {exif.lat.toFixed(4)}, {exif.lng.toFixed(4)}
-                </span>
               ) : (
                 <span className="text-white/40">
-                  无 GPS — 选择地点让照片出现在地球仪上
+                  不选 → 每张用各自 EXIF GPS
                 </span>
               )}
             </div>
@@ -224,58 +287,66 @@ export function UploadForm() {
         </div>
       )}
 
-      {/* Explicit upload trigger. The user picks time/location first,
-          then clicks here. The picked values are sent in the upload
-          payload. */}
-      {showUploadBtn && (
+      {batchStatus === 'ready' && (
         <button
           type="button"
           onClick={doUpload}
           disabled={busy}
           className="block w-full rounded bg-white px-4 py-3 text-sm font-medium text-black transition hover:bg-white/90 disabled:opacity-50"
         >
-          上传
+          上传 {queue.length} 张
         </button>
       )}
 
-      {/* EXIF readout */}
-      {exif && (exif.takenAt || exif.lat != null || exif.make || exif.model) && (
-        <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3 text-xs text-white/70">
-          <p className="mb-1 text-white/50">EXIF</p>
-          {exif.takenAt && <p>📅 {new Date(exif.takenAt).toLocaleString('zh-CN')}</p>}
-          {exif.lat != null && exif.lng != null && (
-            <p>📍 {exif.lat.toFixed(4)}, {exif.lng.toFixed(4)}</p>
-          )}
-          {(exif.make || exif.model) && (
-            <p>📷 {[exif.make, exif.model].filter(Boolean).join(' ')}</p>
-          )}
+      {/* Per-file progress list */}
+      {queue.length > 0 && (
+        <div className="space-y-1 text-xs">
+          {queue.map((item, idx) => (
+            <div
+              key={item.id}
+              className={`flex items-center justify-between gap-2 rounded border px-2 py-1.5 ${
+                item.status === 'done'
+                  ? 'border-emerald-500/30 bg-emerald-900/10 text-emerald-200'
+                  : item.status === 'error'
+                    ? 'border-rose-500/30 bg-rose-900/10 text-rose-200'
+                    : item.status === 'uploading'
+                      ? 'border-sky-500/30 bg-sky-900/10 text-sky-200'
+                      : 'border-white/10 bg-white/[0.02] text-white/70'
+              }`}
+            >
+              <span className="truncate">
+                <span className="mr-1 text-white/40">{idx + 1}.</span>
+                {item.file.name}
+                {item.exif?.lat != null && item.exif?.lng != null && (
+                  <span className="ml-2 text-white/40">
+                    · GPS {item.exif.lat.toFixed(2)},{' '}
+                    {item.exif.lng.toFixed(2)}
+                  </span>
+                )}
+              </span>
+              <span className="flex-shrink-0 text-right">
+                {item.status === 'extracting' && '读 EXIF…'}
+                {item.status === 'ready' && '待上传'}
+                {item.status === 'uploading' && '上传中…'}
+                {item.status === 'done' && '✅'}
+                {item.status === 'error' && (
+                  <span title={item.error}>❌ 失败</span>
+                )}
+              </span>
+            </div>
+          ))}
         </div>
       )}
 
-      {/* Result */}
-      {publicUrl && (
-        <div className="rounded-lg border border-white/10 bg-white/[0.02] p-4 text-sm">
-          <p className="text-white/50">对象 Key</p>
-          <code className="mt-1 block break-all text-xs text-white/80">{key}</code>
-          <p className="mt-3 text-white/50">公开 URL</p>
-          <a
-            href={publicUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-1 block break-all text-xs text-sky-300 underline"
-          >
-            {publicUrl}
-          </a>
-        </div>
-      )}
-
-      {status !== 'idle' && (
+      {(batchStatus === 'done' ||
+        batchStatus === 'partial' ||
+        batchStatus === 'error') && (
         <button
           type="button"
           onClick={reset}
           className="rounded border border-white/15 px-3 py-1.5 text-xs text-white/70 hover:bg-white/5"
         >
-          重选
+          再选一批
         </button>
       )}
 
