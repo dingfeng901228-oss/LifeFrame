@@ -1,5 +1,44 @@
 @import "tailwindcss";
 
+/* ── Theme support ────────────────────────────────────────────────
+ * Tailwind v4 configures dark mode via @custom-variant instead of
+ * tailwind.config. We use class-based dark mode so we can flip the
+ * whole page via a single <html class="dark"> toggle from
+ * components/ThemeToggle. Light mode is the explicit `.light` class
+ * (default = dark, matching the existing brand). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Design tokens. Default = dark; .light overrides below. Components
+ * should prefer the var(--token) utilities over hard-coded colors so
+ * the switch is free. Where adding dark: variants everywhere would be
+ * too much churn, these vars let us keep most of the dark-friendly
+ * Tailwind classes and just flip a few critical surfaces. */
+:root {
+  --bg-primary: #000000;
+  --bg-secondary: rgba(255, 255, 255, 0.02);
+  --bg-elevated: rgba(255, 255, 255, 0.04);
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.6);
+  --text-muted: rgba(255, 255, 255, 0.4);
+  --border-primary: rgba(255, 255, 255, 0.1);
+  --accent: #67e8f9;
+  --accent-hover: #22d3ee;
+  --shadow: rgba(0, 0, 0, 0.4);
+}
+
+.light {
+  --bg-primary: #fafafa;
+  --bg-secondary: rgba(0, 0, 0, 0.02);
+  --bg-elevated: rgba(0, 0, 0, 0.04);
+  --text-primary: #0a0a0a;
+  --text-secondary: rgba(0, 0, 0, 0.65);
+  --text-muted: rgba(0, 0, 0, 0.4);
+  --border-primary: rgba(0, 0, 0, 0.1);
+  --accent: #0891b2;
+  --accent-hover: #0e7490;
+  --shadow: rgba(0, 0, 0, 0.1);
+}
+
 html,
 body {
   height: 100%;
@@ -15,8 +54,10 @@ body {
 }
 
 body {
-  background: #000;
-  color: #fff;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  /* Smooth color transition when ThemeToggle flips the class. */
+  transition: background-color 200ms ease, color 200ms ease;
 }
 
 canvas {

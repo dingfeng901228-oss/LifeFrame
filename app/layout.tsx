@@ -3,6 +3,7 @@ import './globals.css';
 import Link from 'next/link';
 import { PWARegistrar } from '@/components/PWARegistrar';
 import { AuthButton } from '@/components/AuthButton';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 const SITE_URL = 'https://lifeframe.frank2025.com';
 const DESCRIPTION =
@@ -71,21 +72,57 @@ export const viewport = {
   initialScale: 1,
 };
 
+// Pre-hydration script. Reads the stored theme preference (or
+// falls back to the OS preference) and applies the matching class
+// to <html> before React hydrates. Without this, the page would
+// flash the default dark theme for a frame on every load for
+// users who chose "light" or whose OS is in light mode.
+const themeBootstrap = `
+(function () {
+  try {
+    var v = localStorage.getItem('lifeframe-theme');
+    var resolved;
+    if (v === 'light' || v === 'dark') {
+      resolved = v;
+    } else {
+      resolved = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    }
+    var root = document.documentElement;
+    if (resolved === 'light') {
+      root.classList.add('light');
+      root.classList.remove('dark');
+    } else {
+      root.classList.add('dark');
+      root.classList.remove('light');
+    }
+  } catch (e) {}
+})();
+`.trim();
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="zh-Hans">
       <head>
         <link rel="apple-touch-icon" href="/icon-192.png" />
+        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
+        <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
       </head>
-      <body className="min-h-screen bg-black text-white antialiased">
-        <header className="relative z-10 flex items-center justify-between border-b border-white/10 px-6 py-4">
-          <Link href="/" className="text-lg font-medium tracking-wide">
+      <body className="min-h-screen antialiased">
+        <header className="relative z-10 flex items-center justify-between border-b border-[var(--border-primary)] bg-[var(--bg-primary)] px-6 py-4 text-[var(--text-primary)]">
+          <Link
+            href="/"
+            className="text-lg font-medium tracking-wide hover:text-[var(--accent)] transition"
+          >
             LifeFrame
           </Link>
-          <nav className="flex items-center gap-6 text-sm text-white/60">
-            <Link href="/upload" className="hover:text-white">
+          <nav className="flex items-center gap-6 text-sm text-[var(--text-secondary)]">
+            <Link
+              href="/upload"
+              className="hover:text-[var(--text-primary)] transition"
+            >
               上传
             </Link>
+            <ThemeToggle />
             <AuthButton />
           </nav>
         </header>
