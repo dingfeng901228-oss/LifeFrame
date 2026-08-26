@@ -4,7 +4,7 @@ import { useRef, useState } from 'react';
 import { extractExif, type PhotoExif } from '@/lib/exif';
 import { MapPicker, type PickedLocation } from '@/components/MapPicker';
 
-type Status = 'idle' | 'signing' | 'uploading' | 'done' | 'error';
+type Status = 'idle' | 'ready' | 'signing' | 'uploading' | 'done' | 'error';
 
 export function UploadForm() {
   const [status, setStatus] = useState<Status>('idle');
@@ -17,6 +17,7 @@ export function UploadForm() {
   const [picked, setPicked] = useState<PickedLocation | null>(null);
   const [takenAtManual, setTakenAtManual] = useState<string>('');
   const [mapOpen, setMapOpen] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function onChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -24,29 +25,47 @@ export function UploadForm() {
     setKey(null);
     setPublicUrl(null);
     setExif(null);
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setFileName(file.name);
-    setFileSize(file.size);
+    setPicked(null);
+    setTakenAtManual('');
+    const f = e.target.files?.[0];
+    if (!f) {
+      setFile(null);
+      setFileName(null);
+      setFileSize(null);
+      setStatus('idle');
+      return;
+    }
+    setFile(f);
+    setFileName(f.name);
+    setFileSize(f.size);
 
     try {
-      // Extract EXIF first (fast — reads header only) so we can include
-      // it as R2 object metadata on upload.
-      const exifData = await extractExif(file);
+      // Read EXIF header only (fast) so the user can see GPS + camera + time
+      // and decide whether to override before clicking upload.
+      const exifData = await extractExif(f);
       setExif(exifData);
       if (exifData.takenAt) {
-        // Convert ISO → datetime-local input format (YYYY-MM-DDTHH:mm)
         setTakenAtManual(exifData.takenAt.slice(0, 16));
       }
+    } catch {
+      // ignore EXIF errors — we still let the user upload
+    }
+    setStatus('ready');
+  }
 
-      setStatus('signing');
-      // Build the EXIF payload sent to the API. Picked location overrides
-      // any EXIF GPS — user explicit intent wins over auto-extraction.
-      const finalLat = picked?.lat ?? exifData.lat;
-      const finalLng = picked?.lng ?? exifData.lng;
+  async function doUpload() {
+    if (!file) return;
+    setStatus('signing');
+    setError(null);
+    try {
+      // Final payload: picked location overrides EXIF GPS, manual time
+      // overrides EXIF DateTimeOriginal.
+      const finalLat = picked?.lat ?? exif?.lat;
+      const finalLng = picked?.lng ?? exif?.lng;
       const finalTaken = takenAtManual
         ? new Date(takenAtManual).toISOString()
-        : exifData.takenAt;
+        : exif?.takenAt;
+
       const signRes = await fetch('/api/upload-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -57,8 +76,8 @@ export function UploadForm() {
             takenAt: finalTaken,
             lat: finalLat,
             lng: finalLng,
-            make: exifData.make,
-            model: exifData.model,
+            make: exif?.make,
+            model: exif?.model,
             locationName: picked?.name,
           },
         }),
@@ -104,10 +123,13 @@ export function UploadForm() {
     setExif(null);
     setPicked(null);
     setTakenAtManual('');
+    setFile(null);
     if (inputRef.current) inputRef.current.value = '';
   }
 
   const busy = status === 'signing' || status === 'uploading';
+  const showPreUpload = file && !busy && status !== 'done';
+  const showUploadBtn = status === 'ready';
 
   return (
     <div className="space-y-6">
@@ -126,6 +148,14 @@ export function UploadForm() {
 
       <div className="min-h-6 text-sm">
         {status === 'idle' && <span className="text-white/40">等选择</span>}
+        {status === 'ready' && (
+          <span className="text-sky-300">
+            已读取 EXIF
+            {fileName ? ` · ${fileName}` : ''}
+            {fileSize != null ? ` · ${(fileSize / 1024).toFixed(1)} KB` : ''}
+            {' '}— 可改时间/地点后点上传
+          </span>
+        )}
         {status === 'signing' && (
           <span className="text-sky-300">向 R2 申请签名 URL…</span>
         )}
@@ -139,9 +169,9 @@ export function UploadForm() {
         {status === 'error' && <span className="text-rose-300">失败：{error}</span>}
       </div>
 
-      {/* Manual time override (rare — most photos have EXIF) */}
-      {(status === 'idle' || status === 'signing' || status === 'uploading' ||
-        status === 'error') && (
+      {/* Manual time override — only shown before upload so the user can
+          decide what to send. */}
+      {showPreUpload && (
         <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3 text-xs">
           <p className="mb-2 text-white/50">拍摄时间（可选 — 优先用 EXIF）</p>
           <input
@@ -153,38 +183,60 @@ export function UploadForm() {
         </div>
       )}
 
-      {/* Map picker — lets the user override / set the location */}
-      <div className="rounded-lg border border-white/10 bg-white/[0.02] p-4 text-sm">
-        <p className="mb-2 text-white/50">拍摄地点（可选 — 优先用 EXIF GPS）</p>
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            {picked ? (
-              <span className="text-white/80">
-                📍 <span className="font-medium text-white">{picked.name}</span>
-                <span className="ml-2 text-white/40">
-                  ({picked.lat.toFixed(4)}, {picked.lng.toFixed(4)})
+      {/* Map picker — only shown before upload so picking a location
+          actually flows into the upload payload. */}
+      {showPreUpload && (
+        <div className="rounded-lg border border-white/10 bg-white/[0.02] p-4 text-sm">
+          <p className="mb-2 text-white/50">
+            拍摄地点（可选 — 优先用 EXIF GPS）
+          </p>
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              {picked ? (
+                <span className="text-white/80">
+                  📍{' '}
+                  <span className="font-medium text-white">
+                    {picked.name}
+                  </span>
+                  <span className="ml-2 text-white/40">
+                    ({picked.lat.toFixed(4)}, {picked.lng.toFixed(4)})
+                  </span>
                 </span>
-              </span>
-            ) : exif?.lat != null && exif?.lng != null ? (
-              <span className="text-white/60">
-                📍 EXIF GPS: {exif.lat.toFixed(4)}, {exif.lng.toFixed(4)}
-              </span>
-            ) : (
-              <span className="text-white/40">
-                无 GPS — 选择地点让照片出现在地球仪上
-              </span>
-            )}
+              ) : exif?.lat != null && exif?.lng != null ? (
+                <span className="text-white/60">
+                  📍 EXIF GPS: {exif.lat.toFixed(4)}, {exif.lng.toFixed(4)}
+                </span>
+              ) : (
+                <span className="text-white/40">
+                  无 GPS — 选择地点让照片出现在地球仪上
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setMapOpen(true)}
+              disabled={busy}
+              className="rounded border border-white/20 px-3 py-1.5 text-xs text-white/80 transition hover:border-white/40 hover:text-white disabled:opacity-50"
+            >
+              {picked ? '🗺️ 更改地点' : '🗺️ 选择地点'}
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => setMapOpen(true)}
-            disabled={busy}
-            className="rounded border border-white/20 px-3 py-1.5 text-xs text-white/80 transition hover:border-white/40 hover:text-white disabled:opacity-50"
-          >
-            {picked ? '🗺️ 更改地点' : '🗺️ 选择地点'}
-          </button>
         </div>
-      </div>
+      )}
+
+      {/* Explicit upload trigger. The user picks time/location first,
+          then clicks here. The picked values are sent in the upload
+          payload. */}
+      {showUploadBtn && (
+        <button
+          type="button"
+          onClick={doUpload}
+          disabled={busy}
+          className="block w-full rounded bg-white px-4 py-3 text-sm font-medium text-black transition hover:bg-white/90 disabled:opacity-50"
+        >
+          上传
+        </button>
+      )}
 
       {/* EXIF readout */}
       {exif && (exif.takenAt || exif.lat != null || exif.make || exif.model) && (
