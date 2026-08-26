@@ -67,6 +67,8 @@ export async function POST(req: Request) {
     // §9 of the spec: multi-tag classification. Subset of {person, scenery}.
     // Empty array = uncategorized.
     categories?: unknown;
+    // §24 share level. Defaults server-side to 'private' if absent.
+    visibility?: unknown;
   };
 
   let body: UploadRequestBody;
@@ -124,6 +126,13 @@ export async function POST(req: Request) {
     ? `${config.publicBase}/${key}`
     : signedUrl.split('?')[0];
 
+  // §24: validate visibility. Anything invalid falls back to 'private'
+  // — never let a malformed client write 'public' when they shouldn't.
+  const visibility: 'private' | 'unlisted' | 'public' =
+    body.visibility === 'unlisted' || body.visibility === 'public'
+      ? body.visibility
+      : 'private';
+
   // Insert photo metadata into Supabase (best-effort — don't fail the request).
   // Orphan rows (Supabase row but no R2 object) can happen if client fails PUT;
   // we'll add a status field + cleanup job later if needed.
@@ -141,6 +150,7 @@ export async function POST(req: Request) {
       camera_model: typeof exif?.model === 'string' ? exif.model : null,
       location_name: typeof exif?.locationName === 'string' && exif.locationName.length > 0 ? exif.locationName.slice(0, 240) : null,
       categories: categories.length > 0 ? categories : [],
+      visibility,
     });
     if (error) {
       console.error('[supabase insert error]', error.message);

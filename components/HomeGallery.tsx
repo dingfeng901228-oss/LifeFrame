@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Globe } from '@/components/Globe';
 import { Timeline } from '@/components/Timeline';
 import { createClient } from '@supabase/supabase-js';

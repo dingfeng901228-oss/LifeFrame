@@ -35,6 +35,11 @@ export type PhotoRow = {
   lng: number | null;
   camera_make: string | null;
   camera_model: string | null;
+  // §24 share level. New photos default to 'private' (column default).
+  // 'unlisted' is reachable by direct URL but excluded from sitemap.
+  // 'public' is reachable by URL AND emitted into sitemap so search
+  // engines can index the /p/[key] page.
+  visibility: 'private' | 'unlisted' | 'public';
 };
 
 export type PhotoInsert = {
@@ -48,4 +53,5 @@ export type PhotoInsert = {
   lng?: number | null;
   camera_make?: string | null;
   camera_model?: string | null;
+  visibility?: 'private' | 'unlisted' | 'public';
 };
