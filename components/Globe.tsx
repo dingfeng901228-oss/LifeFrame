@@ -168,6 +168,24 @@ export function Globe({ markers = [], onMarkerSelect }: Props = {}) {
     setScale((s) => Math.max(MIN_SCALE, Math.min(MAX_SCALE, s * factor)));
   };
 
+  // ── Click delegation ────────────────────────────────────────────
+  // setPointerCapture() above redirects the click event to the wrapper
+  // div (per the Pointer Events spec — once a pointer is captured, all
+  // subsequent events including click are dispatched to the capture
+  // target). The marker <g>'s own onClick therefore never fires. To
+  // still open the photo modal, listen for click on the wrapper and
+  // walk up from event.target to find the nearest marker (identified
+  // by data-marker-index).
+  const handleWrapperClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as Element | null;
+    const markerEl = target?.closest('[data-marker-index]');
+    if (!markerEl) return;
+    const idx = Number(markerEl.getAttribute('data-marker-index'));
+    if (Number.isFinite(idx) && idx >= 0) {
+      onMarkerSelect?.(idx);
+    }
+  };
+
   return (
     <div className="relative flex h-full w-full items-center justify-center select-none">
       <div
@@ -185,6 +203,7 @@ export function Globe({ markers = [], onMarkerSelect }: Props = {}) {
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
         onWheel={handleWheel}
+        onClick={handleWrapperClick}
       >
         <svg
           width={size}
@@ -222,14 +241,17 @@ export function Globe({ markers = [], onMarkerSelect }: Props = {}) {
             ))}
           </g>
 
-          {/* Photo markers — SVG circle, native onClick handles */}
+          {/* Photo markers — SVG circle. onClick lives on the wrapper
+              (handleWrapperClick) because setPointerCapture redirects
+              click to the capture target. data-marker-index lets the
+              wrapper's click handler find which marker was clicked. */}
           <g>
             {projectedMarkers.map((m) => (
               <g
                 key={m.i}
+                data-marker-index={m.i}
                 transform={`translate(${m.x}, ${m.y})`}
                 style={{ cursor: 'pointer' }}
-                onClick={() => onMarkerSelect?.(m.i)}
                 onMouseEnter={(e) => {
                   const target = e.currentTarget;
                   target.querySelectorAll('circle').forEach((c) => {
