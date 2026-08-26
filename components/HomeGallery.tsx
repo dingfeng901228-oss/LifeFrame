@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Globe } from '@/components/Globe';
 import { Timeline } from '@/components/Timeline';
+import { TimeTravel } from '@/components/TimeTravel';
 import { createClient } from '@supabase/supabase-js';
 
 type PhotoRow = {
@@ -36,6 +37,7 @@ export function HomeGallery() {
   const [onThisDayOpen, setOnThisDayOpen] = useState(false);
   const [clusterOpen, setClusterOpen] = useState(false);
   const [clusterPhotos, setClusterPhotos] = useState<PhotoRow[]>([]);
+  const [timeTravelOpen, setTimeTravelOpen] = useState(false);
 
   useEffect(() => {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -191,16 +193,27 @@ export function HomeGallery() {
                 ? `${visibleCount} 张照片在 ${formatMonth(selectedDate)} ± ${TIMELINE_WINDOW_DAYS / 2} 天窗口内`
                 : `${photos.length} 张照片已点亮地点`}
         </p>
-        {onThisDayGrouped.length > 0 && (
-          <button
-            type="button"
-            onClick={() => setOnThisDayOpen(true)}
-            className="pointer-events-auto mt-3 inline-flex items-center gap-1.5 rounded-full border border-cyan-500/40 dark:border-cyan-400/30 bg-white/95 dark:bg-black/40 px-3 py-1.5 text-xs text-cyan-700 dark:text-cyan-300/90 backdrop-blur-sm transition hover:border-cyan-500 dark:hover:border-cyan-400/60 hover:text-cyan-700 dark:hover:text-cyan-300"
-          >
-            📅 历史上这一天 · {onThisDayGrouped.length} 个年份 ·{' '}
-            {onThisDayGrouped.reduce((s, g) => s + g.photos.length, 0)} 张照片
-          </button>
-        )}
+        <div className="pointer-events-auto mt-3 flex flex-wrap items-center justify-center gap-2">
+          {onThisDayGrouped.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setOnThisDayOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-cyan-500/40 dark:border-cyan-400/30 bg-white/95 dark:bg-black/40 px-3 py-1.5 text-xs text-cyan-700 dark:text-cyan-300/90 backdrop-blur-sm transition hover:border-cyan-500 dark:hover:border-cyan-400/60 hover:text-cyan-700 dark:hover:text-cyan-300"
+            >
+              📅 历史上这一天 · {onThisDayGrouped.length} 个年份 ·{' '}
+              {onThisDayGrouped.reduce((s, g) => s + g.photos.length, 0)} 张照片
+            </button>
+          )}
+          {photos.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setTimeTravelOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia-500/40 dark:border-fuchsia-400/30 bg-white/95 dark:bg-black/40 px-3 py-1.5 text-xs text-fuchsia-700 dark:text-fuchsia-300/90 backdrop-blur-sm transition hover:border-fuchsia-500 dark:hover:border-fuchsia-400/60 hover:text-fuchsia-700 dark:hover:text-fuchsia-300"
+            >
+              ▶ 时间旅行 · Explore My Life
+            </button>
+          )}
+        </div>
         {fetchError && (
           <p className="mt-3 max-w-md text-xs text-rose-700 dark:text-rose-300/90">
             � 加载照片失败：{fetchError}
@@ -405,6 +418,20 @@ export function HomeGallery() {
           </div>
         </div>
       )}
+
+      {/* §18 of 要件定義書 — Time Travel. Drives selectedDate forward
+          from the earliest to the latest photo, syncing Globe +
+          Timeline + photos in real time. Close resets selectedDate
+          so the home page returns to "show all photos" state. */}
+      <TimeTravel
+        photos={photos}
+        open={timeTravelOpen}
+        onClose={() => {
+          setTimeTravelOpen(false);
+          setSelectedDate(null);
+        }}
+        onDateChange={setSelectedDate}
+      />
     </>
   );
 }
