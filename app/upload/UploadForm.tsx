@@ -37,6 +37,11 @@ export function UploadForm() {
   const [categories, setCategories] = useState<string[]>([]);
   const [locating, setLocating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Batch-level manual time override. When set, this wins over each
+  // photo's EXIF takenAt during upload. Empty string = fall back to
+  // per-photo EXIF. The picker UI in the JSX below pre-fills from
+  // the first photo's EXIF so users usually don't have to do anything.
+  const [takenAtManual, setTakenAtManual] = useState<string>('');
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function onChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -64,6 +69,10 @@ export function UploadForm() {
     }));
     setQueue(items);
     setBatchStatus('ready');
+    // Pre-fill the batch-level time picker from the first photo's EXIF.
+    // If EXIF has no taken_at we leave the picker empty (the
+    // upload still uses each photo's EXIF as a fallback below).
+    setTakenAtManual('');
 
     // Read EXIF for all files in parallel (fast — header-only reads).
     // We mutate `items` in place via index and re-publish the queue
@@ -74,7 +83,11 @@ export function UploadForm() {
           const exifData = await extractExif(items[i].file);
           items[i].exif = exifData;
           if (exifData.takenAt) {
-            items[i].takenAtManual = exifData.takenAt.slice(0, 16);
+            const iso = exifData.takenAt.slice(0, 16);
+            items[i].takenAtManual = iso;
+            // Prefill the top-level picker only if the user hasn't
+            // already picked something for the previous batch.
+            setTakenAtManual((prev) => (prev ? prev : iso));
           }
         } catch {
           // No EXIF — that's fine, file will just upload without GPS/time.
@@ -142,6 +155,7 @@ export function UploadForm() {
     item: QueueItem,
     batchPicked: PickedLocation | null,
     batchCategories: string[],
+    batchTakenAtManual: string,
   ): Promise<void> {
     setQueue((q) =>
       q.map((it) =>
@@ -150,13 +164,13 @@ export function UploadForm() {
     );
     try {
       // Final payload: batch-level picked location overrides EXIF GPS
-      // for every photo. Per-photo manual time isn't exposed in batch
-      // mode (too much UI for a 30-photo flow); EXIF DateTimeOriginal
-      // is used when available.
+      // for every photo. Same story for time: the top-level time
+      // picker (takenAtManual) wins over EXIF; if neither is set we
+      // just don't send takenAt and the Supabase column stays null.
       const finalLat = batchPicked?.lat ?? item.exif?.lat;
       const finalLng = batchPicked?.lng ?? item.exif?.lng;
-      const finalTaken = item.takenAtManual
-        ? new Date(item.takenAtManual).toISOString()
+      const finalTaken = batchTakenAtManual
+        ? new Date(batchTakenAtManual).toISOString()
         : item.exif?.takenAt;
 
       const signRes = await fetch('/api/upload-url', {
@@ -256,7 +270,7 @@ export function UploadForm() {
     for (let i = 0; i < queue.length; i += MAX_CONCURRENCY) {
       const chunk = queue.slice(i, i + MAX_CONCURRENCY);
       const settled = await Promise.allSettled(
-        chunk.map((item) => uploadOne(item, picked, categories)),
+        chunk.map((item) => uploadOne(item, picked, categories, takenAtManual)),
       );
       results.push(...settled);
     }
@@ -276,6 +290,7 @@ export function UploadForm() {
     setQueue([]);
     setPicked(null);
     setCategories([]);
+    setTakenAtManual('');
     setError(null);
     if (inputRef.current) inputRef.current.value = '';
   }
@@ -388,6 +403,51 @@ export function UploadForm() {
         </div>
       )}
 
+      {/* Time picker — mirrors the location-picker UX: optional, panel-
+          styled, "current value" display on the left, datetime-local
+          input + clear button on the right. We prefill from EXIF
+          takenAt so users usually don't have to do anything. */}
+      {showPickers && (
+        <div className="rounded-lg border border-white/10 bg-white/[0.02] p-4 text-sm">
+          <p className="mb-2 text-white/50">
+            拍摄时间（整批共用 — 可选；不选则每张用各自 EXIF 时间）
+          </p>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              {takenAtManual ? (
+                <span className="text-white/80">
+                  📅{' '}
+                  <span className="font-medium text-white">
+                    {formatShortDateTime(takenAtManual)}
+                  </span>
+                </span>
+              ) : (
+                <span className="text-white/40">
+                  不选 → 每张用各自 EXIF 时间
+                </span>
+              )}
+            </div>
+            <div className="flex flex-shrink-0 items-center gap-2">
+              <input
+                type="datetime-local"
+                value={takenAtManual}
+                onChange={(e) => setTakenAtManual(e.target.value)}
+                className="rounded border border-white/15 bg-white/5 px-2 py-1 text-xs text-white"
+              />
+              {takenAtManual && (
+                <button
+                  type="button"
+                  onClick={() => setTakenAtManual('')}
+                  className="rounded border border-white/20 px-3 py-1.5 text-xs text-white/80 transition hover:border-white/40 hover:text-white"
+                >
+                  ✕ 清除
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Categories — multi-tag for the whole batch. §9 of the spec:
           "采用多标签设计而不是单选。例如照片 A 同时归类人物 + 风景。"
           We persist to photos.categories via the API route. */}
@@ -473,13 +533,21 @@ export function UploadForm() {
       {(batchStatus === 'done' ||
         batchStatus === 'partial' ||
         batchStatus === 'error') && (
-        <button
-          type="button"
-          onClick={reset}
-          className="rounded border border-white/15 px-3 py-1.5 text-xs text-white/70 hover:bg-white/5"
-        >
-          再选一批
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={reset}
+            className="rounded border border-white/15 px-3 py-1.5 text-xs text-white/70 hover:bg-white/5"
+          >
+            再选一批
+          </button>
+          <a
+            href="/"
+            className="rounded border border-white/30 bg-white/5 px-3 py-1.5 text-xs text-white/80 transition hover:border-white/40 hover:text-white"
+          >
+            返回首页
+          </a>
+        </div>
       )}
 
       {mapOpen && (
@@ -494,4 +562,9 @@ export function UploadForm() {
       )}
     </div>
   );
+}
+
+function formatShortDateTime(iso: string): string {
+  // iso like "2026-08-26T18:54" — render as "2026.08.26 18:54"
+  return iso.replace(/-/g, '.').replace('T', ' ');
 }
