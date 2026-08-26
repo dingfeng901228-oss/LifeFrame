@@ -3,8 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 type Photo = {
+  key: string;
   taken_at: string | null;
   created_at: string;
+  public_url: string;
+  filename: string;
 };
 
 type Props = {
@@ -15,14 +18,13 @@ type Props = {
 };
 
 const MS_PER_DAY = 24 * 3600 * 1000;
+// §6 of the spec calls for the timeline to span the whole life of the
+// user. Left edge fixed at 1990-11 so it's stable across sessions —
+// Frank always knows what the leftmost end means. Right edge is "now",
+// recomputed per render so the track very slowly drifts forward as
+// time passes (negligible between refreshes, but technically right).
+const MIN_DATE = new Date('1990-11-01T00:00:00Z');
 
-/**
- * Horizontal date-range timeline for the home page. The user can either
- * click anywhere on the track to jump to that date, or click-and-drag
- * the track (or the cyan knob) to scrub through dates continuously.
- * The home page filters globe markers to photos within ±windowDays/2 of
- * the selected date. Selecting nothing (= null) reverts to "all time".
- */
 export function Timeline({
   photos,
   selectedDate,
@@ -32,45 +34,63 @@ export function Timeline({
   const trackRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
 
-  const { minDate, maxDate } = useMemo(() => {
-    let min: Date | null = null;
-    let max: Date | null = null;
-    for (const p of photos) {
-      const ts = p.taken_at || p.created_at;
-      if (!ts) continue;
-      const d = new Date(ts);
-      if (isNaN(d.getTime())) continue;
-      if (!min || d < min) min = d;
-      if (!max || d > max) max = d;
-    }
-    if (!min) {
-      const now = new Date();
-      min = new Date(now.getFullYear() - 3, 0, 1);
-      max = now;
-    } else if (!max) {
-      max = new Date();
-    }
-    // Pad the edges so ticks aren't jammed against the boundaries.
-    const paddedMin = new Date(min.getTime() - MS_PER_DAY * 14);
-    const paddedMax = new Date(max.getTime() + MS_PER_DAY * 14);
-    return { minDate: paddedMin, maxDate: paddedMax };
-  }, [photos]);
-
+  // Right edge = now (recomputed per render — cheap)
+  const maxDate = useMemo(() => new Date(), []);
+  const minDate = MIN_DATE;
   const totalSpan = maxDate.getTime() - minDate.getTime();
 
+  // ── Photo positions on the track ─────────────────────────────────
+  // Each photo maps to a percentage along the track. Sort by
+  // position so we can render them in left-to-right order and
+  // expose them to the thumbnail popup in chronological sequence.
+  type PhotoPos = {
+    key: string;
+    pos: number;
+    date: Date;
+    publicUrl: string;
+    filename: string;
+  };
+
+  const photoPositions = useMemo<PhotoPos[]>(() => {
+    return photos
+      .map((p) => {
+        const ts = p.taken_at || p.created_at;
+        if (!ts) return null;
+        const d = new Date(ts);
+        if (isNaN(d.getTime())) return null;
+        const pos = ((d.getTime() - minDate.getTime()) / totalSpan) * 100;
+        return {
+          key: p.key,
+          pos,
+          date: d,
+          publicUrl: p.public_url,
+          filename: p.filename,
+        };
+      })
+      .filter((x): x is PhotoPos => x !== null)
+      .sort((a, b) => a.pos - b.pos);
+  }, [photos, minDate, totalSpan]);
+
+  // Photos inside the selected window — these are the candidates for
+  // the thumbnail popup above the track. Same window logic as the
+  // gallery's visiblePhotos filter so the timeline popup and the
+  // globe markers stay in sync.
+  const visiblePositions = useMemo(() => {
+    if (!selectedDate) return [];
+    const halfWindowMs = (windowDays / 2) * MS_PER_DAY;
+    return photoPositions.filter((p) => {
+      const diff = Math.abs(p.date.getTime() - selectedDate.getTime());
+      return diff <= halfWindowMs;
+    });
+  }, [photoPositions, selectedDate, windowDays]);
+
+  // Year ticks
   const ticks = useMemo(() => {
-    const out: { date: Date; label: string; major: boolean }[] = [];
+    const out: { date: Date; label: string }[] = [];
     const startYear = minDate.getFullYear();
     const endYear = maxDate.getFullYear();
     for (let y = startYear; y <= endYear; y++) {
-      out.push({ date: new Date(y, 0, 1), label: `${y}`, major: true });
-    }
-    for (let y = startYear; y <= endYear; y++) {
-      for (let m = 0; m < 12; m++) {
-        const startOfMonth = new Date(y, m, 1);
-        if (startOfMonth < minDate || startOfMonth > maxDate) continue;
-        out.push({ date: startOfMonth, label: '', major: false });
-      }
+      out.push({ date: new Date(y, 0, 1), label: `${y}` });
     }
     return out;
   }, [minDate, maxDate]);
@@ -84,9 +104,6 @@ export function Timeline({
     [minDate, totalSpan],
   );
 
-  // Convert a clientX coordinate (within the viewport) to a Date based
-  // on the track's bounding rect. Returns null if the track isn't
-  // mounted yet.
   const dateFromClientX = useCallback(
     (clientX: number): Date | null => {
       if (!trackRef.current) return null;
@@ -99,14 +116,9 @@ export function Timeline({
     [minDate, totalSpan],
   );
 
-  // ── Drag-to-scrub ───────────────────────────────────────────────
-  // Same pattern as Globe.tsx: pointerdown on the track starts the
-  // drag, window-level listeners keep firing when the pointer leaves
-  // the track (especially relevant on touch). We avoid setPointerCapture
-  // here too so clicks and drags both work natively.
+  // ── Drag-to-scrub (same pattern as Globe.tsx, no setPointerCapture) ──
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
-      // Only respond to primary mouse button (left click) or touch.
       if (e.button !== 0 && e.pointerType === 'mouse') return;
       e.preventDefault();
       setDragging(true);
@@ -139,7 +151,6 @@ export function Timeline({
     window.removeEventListener('pointercancel', handleWindowPointerUp);
   }, []);
 
-  // Cleanup on unmount.
   useEffect(() => {
     return () => {
       window.removeEventListener('pointermove', handleWindowPointerMove);
@@ -158,31 +169,64 @@ export function Timeline({
   return (
     <div className="mx-auto w-full max-w-3xl px-6 pb-3 pt-2">
       <div className="mb-2 flex items-center justify-between text-[10px] tracking-wider text-white/40">
-        <span className="tabular-nums">
-          {minDate.toISOString().slice(0, 10)}
-        </span>
+        <span className="tabular-nums">{formatShort(minDate)}</span>
         <span className="text-white/60">
           {selectedDate
             ? `筛选：${formatShort(selectedDate)} ± ${Math.round(windowDays / 2)} 天`
-            : '拖动滑块筛选地球仪照片'}
+            : '拖动滑块筛选'}
         </span>
-        <span className="tabular-nums">
-          {maxDate.toISOString().slice(0, 10)}
-        </span>
+        <span className="tabular-nums">{formatShort(maxDate)}</span>
       </div>
-      <div
-        ref={trackRef}
-        onPointerDown={handlePointerDown}
-        className={`relative h-14 touch-none select-none rounded border bg-white/[0.03] transition ${
-          dragging
-            ? 'cursor-grabbing border-white/40'
-            : 'cursor-pointer border-white/10 hover:border-white/20'
-        }`}
-      >
-        {/* Year ticks */}
-        {ticks
-          .filter((t) => t.major)
-          .map((t) => (
+
+      <div className="relative">
+        {/* Thumbnail popup — floats above the track, anchored to the
+            current handle position. Only shown when the user has
+            actually scrubbed somewhere (selectedDate set) and at
+            least one photo is inside the ±windowDays/2 window. Up
+            to 3 thumbs visible, with a "+N" overflow chip if more. */}
+        {selectedDate &&
+          handlePos !== null &&
+          visiblePositions.length > 0 && (
+            <div
+              className="pointer-events-none absolute z-20"
+              style={{
+                left: `${handlePos}%`,
+                bottom: '100%',
+                transform: 'translateX(-50%)',
+                marginBottom: '8px',
+              }}
+            >
+              <div className="flex gap-1.5 rounded-lg border border-cyan-400/40 bg-black/85 p-1.5 shadow-lg backdrop-blur-sm">
+                {visiblePositions.slice(0, 3).map((p) => (
+                  <img
+                    key={p.key}
+                    src={p.publicUrl}
+                    alt={p.filename}
+                    className="h-12 w-12 rounded object-cover ring-1 ring-white/10"
+                    title={p.filename}
+                  />
+                ))}
+                {visiblePositions.length > 3 && (
+                  <div className="flex h-12 w-12 items-center justify-center rounded bg-black/60 text-xs text-white/70 ring-1 ring-white/10">
+                    +{visiblePositions.length - 3}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+        {/* Track */}
+        <div
+          ref={trackRef}
+          onPointerDown={handlePointerDown}
+          className={`relative h-14 touch-none select-none rounded border bg-white/[0.03] transition ${
+            dragging
+              ? 'cursor-grabbing border-white/40'
+              : 'cursor-pointer border-white/10 hover:border-white/20'
+          }`}
+        >
+          {/* Year ticks */}
+          {ticks.map((t) => (
             <div
               key={`y-${t.label}`}
               className="pointer-events-none absolute top-0 bottom-0 border-l border-white/25"
@@ -193,40 +237,50 @@ export function Timeline({
               </span>
             </div>
           ))}
-        {/* Month ticks */}
-        {ticks
-          .filter((t) => !t.major)
-          .map((t, i) => (
+
+          {/* Photo keyframe dots — one per photo, positioned by
+              taken_at (fallback created_at) along the track. Cyan
+              dot is the same color as the active window overlay so
+              it reads as "this is a keyframe inside this scrub
+              window" once the user starts scrubbing. pointer-events:
+              none so the dots don't break drag. */}
+          {photoPositions.map((p) => (
             <div
-              key={`m-${i}`}
-              className="pointer-events-none absolute top-7 bottom-0 border-l border-white/10"
-              style={{ left: `${positionFor(t.date)}%` }}
+              key={`dot-${p.key}`}
+              className="pointer-events-none absolute h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-cyan-300/80 shadow-[0_0_4px_rgba(103,232,249,0.8)] ring-1 ring-black/40"
+              style={{
+                left: `${p.pos}%`,
+                top: '50%',
+                transform: 'translate(-50%, -50%)',
+              }}
+              title={p.filename}
             />
           ))}
-        {/* Selected range overlay */}
-        {rangeStart !== null && rangeWidth !== null && (
-          <div
-            className="pointer-events-none absolute top-0 bottom-0 bg-cyan-400/15"
-            style={{
-              left: `${rangeStart}%`,
-              width: `${rangeWidth}%`,
-            }}
-          />
-        )}
-        {/* Selected marker — vertical line + draggable knob. The knob
-            is a cyan dot that sits on top of the line and gives users
-            a clear "grab here" affordance. The whole track is also
-            draggable, but the knob makes it discoverable. */}
-        {handlePos !== null && (
-          <div
-            className="pointer-events-none absolute -top-2 -bottom-2"
-            style={{ left: `${handlePos}%`, transform: 'translateX(-50%)' }}
-          >
-            <div className="h-full w-0.5 bg-cyan-400 shadow-[0_0_10px_rgba(103,232,249,0.7)]" />
-            <div className="absolute top-1/2 left-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-cyan-400 bg-black shadow-[0_0_12px_rgba(103,232,249,0.6)]" />
-          </div>
-        )}
+
+          {/* Selected range overlay */}
+          {rangeStart !== null && rangeWidth !== null && (
+            <div
+              className="pointer-events-none absolute top-0 bottom-0 bg-cyan-400/15"
+              style={{
+                left: `${rangeStart}%`,
+                width: `${rangeWidth}%`,
+              }}
+            />
+          )}
+
+          {/* Selected marker — vertical line + draggable knob */}
+          {handlePos !== null && (
+            <div
+              className="pointer-events-none absolute -top-2 -bottom-2"
+              style={{ left: `${handlePos}%`, transform: 'translateX(-50%)' }}
+            >
+              <div className="h-full w-0.5 bg-cyan-400 shadow-[0_0_10px_rgba(103,232,249,0.7)]" />
+              <div className="absolute top-1/2 left-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-cyan-400 bg-black shadow-[0_0_12px_rgba(103,232,249,0.6)]" />
+            </div>
+          )}
+        </div>
       </div>
+
       <div className="mt-1 flex items-center justify-between text-[10px]">
         <span className="text-white/30">
           {dragging ? '拖动中…' : '点击或拖动轨道选时间'}
