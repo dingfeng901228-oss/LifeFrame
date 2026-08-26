@@ -7,6 +7,7 @@ type Photo = {
   taken_at: string | null;
   created_at: string;
   public_url: string;
+  thumbnail_url: string | null;
   filename: string;
 };
 
@@ -25,6 +26,20 @@ const MS_PER_DAY = 24 * 3600 * 1000;
 // time passes (negligible between refreshes, but technically right).
 const MIN_DATE = new Date('1990-11-01T00:00:00Z');
 
+/**
+ * Video-player-style progress bar Timeline.
+ *
+ * Single thin horizontal line spanning 1990-11 → now. Tiny vertical
+ * marks on the bar indicate where photos exist (chapter markers).
+ * A draggable knob (cyan dot) is the playhead. The cyan range overlay
+ * is the ±windowDays/2 selection window. Hovering near a photo
+ * triggers the existing thumbnail popup above the bar.
+ *
+ * Simpler than the previous design (which had year labels, an
+ * elaborate handle with glow + ring + vertical line, and verbose
+ * helper text). This matches what Frank asked for in #6980: "时间
+ * 轨道改为一条线即可，类似播放器的进度条".
+ */
 export function Timeline({
   photos,
   selectedDate,
@@ -48,6 +63,7 @@ export function Timeline({
     pos: number;
     date: Date;
     publicUrl: string;
+    thumbnailUrl: string | null;
     filename: string;
   };
 
@@ -64,6 +80,7 @@ export function Timeline({
           pos,
           date: d,
           publicUrl: p.public_url,
+          thumbnailUrl: p.thumbnail_url,
           filename: p.filename,
         };
       })
@@ -156,23 +173,24 @@ export function Timeline({
     handlePos !== null ? Math.min(100, halfWindowPct * 2) : null;
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-6 pb-3 pt-2">
-      <div className="mb-2 flex items-center justify-between text-[10px] tracking-wider text-white/40">
-        <span className="tabular-nums">{formatShort(minDate)}</span>
-        <span className="text-white/60">
-          {selectedDate
-            ? `筛选：${formatShort(selectedDate)} ± ${Math.round(windowDays / 2)} 天`
-            : '拖动滑块筛选'}
-        </span>
-        <span className="tabular-nums">{formatShort(maxDate)}</span>
+    <div className="mx-auto w-full max-w-3xl px-6 pb-2 pt-1">
+      {/* Compact header — just the date range. No instructions, no
+          "筛选：..." copy. The interaction is self-evident once you
+          touch the bar. */}
+      <div className="mb-1.5 flex items-center justify-between text-[10px] tracking-wider text-white/40 tabular-nums">
+        <span>{formatShort(minDate)}</span>
+        {selectedDate && (
+          <span className="text-cyan-300/80">
+            {formatShort(selectedDate)} ± {Math.round(windowDays / 2)} 天
+          </span>
+        )}
+        <span>{formatShort(maxDate)}</span>
       </div>
 
       <div className="relative">
-        {/* Thumbnail popup — floats above the track, anchored to the
-            current handle position. Only shown when the user has
-            actually scrubbed somewhere (selectedDate set) and at
-            least one photo is inside the ±windowDays/2 window. Up
-            to 3 thumbs visible, with a "+N" overflow chip if more. */}
+        {/* Thumbnail popup — floats above the bar at the playhead's
+            position, only when scrubbing near photos. Same UX as the
+            previous design. */}
         {selectedDate &&
           handlePos !== null &&
           visiblePositions.length > 0 && (
@@ -189,7 +207,7 @@ export function Timeline({
                 {visiblePositions.slice(0, 3).map((p) => (
                   <img
                     key={p.key}
-                    src={p.publicUrl}
+                    src={p.thumbnailUrl || p.publicUrl}
                     alt={p.filename}
                     className="h-12 w-12 rounded object-cover ring-1 ring-white/10"
                     title={p.filename}
@@ -204,39 +222,37 @@ export function Timeline({
             </div>
           )}
 
-        {/* Track */}
+        {/* Bar */}
         <div
           ref={trackRef}
           onPointerDown={handlePointerDown}
-          className={`relative h-14 touch-none select-none rounded border bg-white/[0.03] transition ${
+          className={`relative h-1.5 touch-none select-none rounded-full bg-white/10 transition ${
             dragging
-              ? 'cursor-grabbing border-white/40'
-              : 'cursor-pointer border-white/10 hover:border-white/20'
+              ? 'cursor-grabbing bg-white/15'
+              : 'cursor-pointer hover:bg-white/15'
           }`}
         >
-          {/* Photo keyframe dots — one per photo, positioned by
-              taken_at (fallback created_at) along the track. Cyan
-              dot is the same color as the active window overlay so
-              it reads as "this is a keyframe inside this scrub
-              window" once the user starts scrubbing. pointer-events:
-              none so the dots don't break drag. */}
+          {/* Photo keyframe marks — chapter-marker style vertical
+              ticks just above the bar. Same width as the bar (1.5px)
+              and a bit taller (8px) so they stick up from the line.
+              One per photo. pointer-events: none so they don't
+              interfere with drag. */}
           {photoPositions.map((p) => (
             <div
-              key={`dot-${p.key}`}
-              className="pointer-events-none absolute h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-cyan-300/80 shadow-[0_0_4px_rgba(103,232,249,0.8)] ring-1 ring-black/40"
+              key={`mark-${p.key}`}
+              className="pointer-events-none absolute h-2 w-0.5 -translate-x-1/2 rounded-sm bg-cyan-400/70"
               style={{
                 left: `${p.pos}%`,
-                top: '50%',
-                transform: 'translate(-50%, -50%)',
+                top: '-2px',
               }}
               title={p.filename}
             />
           ))}
 
-          {/* Selected range overlay */}
+          {/* Selected range overlay — the ±windowDays/2 highlight. */}
           {rangeStart !== null && rangeWidth !== null && (
             <div
-              className="pointer-events-none absolute top-0 bottom-0 bg-cyan-400/15"
+              className="pointer-events-none absolute top-0 bottom-0 rounded-full bg-cyan-400/40"
               style={{
                 left: `${rangeStart}%`,
                 width: `${rangeWidth}%`,
@@ -244,23 +260,24 @@ export function Timeline({
             />
           )}
 
-          {/* Selected marker — vertical line + draggable knob */}
+          {/* Playhead — single small cyan circle on the bar. Grows
+              slightly on hover/drag for tactile feedback. pointer-
+              events: none so the wrapper's onPointerDown handles
+              the drag instead of this element swallowing it. */}
           {handlePos !== null && (
             <div
-              className="pointer-events-none absolute -top-2 -bottom-2"
-              style={{ left: `${handlePos}%`, transform: 'translateX(-50%)' }}
-            >
-              <div className="h-full w-0.5 bg-cyan-400 shadow-[0_0_10px_rgba(103,232,249,0.7)]" />
-              <div className="absolute top-1/2 left-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-cyan-400 bg-black shadow-[0_0_12px_rgba(103,232,249,0.6)]" />
-            </div>
+              className={`pointer-events-none absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-400 shadow-[0_0_6px_rgba(103,232,249,0.7)] ring-2 ring-black/40 transition-transform ${
+                dragging ? 'scale-125' : 'scale-100'
+              }`}
+              style={{ left: `${handlePos}%` }}
+            />
           )}
         </div>
       </div>
 
-      <div className="mt-1 flex items-center justify-between text-[10px]">
-        <span className="text-white/30">
-          {dragging ? '拖动中…' : '点击或拖动轨道选时间'}
-        </span>
+      {/* Compact footer — just the clear button when a date is
+          selected. No "drag hint" copy; the cursor change is enough. */}
+      <div className="mt-1 flex items-center justify-end text-[10px]">
         {selectedDate && (
           <button
             type="button"
