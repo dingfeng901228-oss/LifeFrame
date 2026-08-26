@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Globe } from '@/components/Globe';
 import { Timeline } from '@/components/Timeline';
 import { TimeTravel } from '@/components/TimeTravel';
+import { LifeJourney } from '@/components/LifeJourney';
 import { createClient } from '@supabase/supabase-js';
 
 type PhotoRow = {
@@ -38,6 +39,7 @@ export function HomeGallery() {
   const [clusterOpen, setClusterOpen] = useState(false);
   const [clusterPhotos, setClusterPhotos] = useState<PhotoRow[]>([]);
   const [timeTravelOpen, setTimeTravelOpen] = useState(false);
+  const [lifeJourneyOpen, setLifeJourneyOpen] = useState(false);
 
   useEffect(() => {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -205,13 +207,24 @@ export function HomeGallery() {
             </button>
           )}
           {photos.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setTimeTravelOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia-500/40 dark:border-fuchsia-400/30 bg-white/95 dark:bg-black/40 px-3 py-1.5 text-xs text-fuchsia-700 dark:text-fuchsia-300/90 backdrop-blur-sm transition hover:border-fuchsia-500 dark:hover:border-fuchsia-400/60 hover:text-fuchsia-700 dark:hover:text-fuchsia-300"
-            >
-              ▶ 时间旅行 · Explore My Life
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setTimeTravelOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia-500/40 dark:border-fuchsia-400/30 bg-white/95 dark:bg-black/40 px-3 py-1.5 text-xs text-fuchsia-700 dark:text-fuchsia-300/90 backdrop-blur-sm transition hover:border-fuchsia-500 dark:hover:border-fuchsia-400/60 hover:text-fuchsia-700 dark:hover:text-fuchsia-300"
+              >
+                ▶ 时间旅行 · Explore My Life
+              </button>
+              {photos.some((p) => p.location_name) && (
+                <button
+                  type="button"
+                  onClick={() => setLifeJourneyOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 dark:border-emerald-400/30 bg-white/95 dark:bg-black/40 px-3 py-1.5 text-xs text-emerald-700 dark:text-emerald-300/90 backdrop-blur-sm transition hover:border-emerald-500 dark:hover:border-emerald-400/60 hover:text-emerald-700 dark:hover:text-emerald-300"
+                >
+                  🌏 人生足迹 · Life Journey
+                </button>
+              )}
+            </>
           )}
         </div>
         {fetchError && (
@@ -431,6 +444,23 @@ export function HomeGallery() {
           setSelectedDate(null);
         }}
         onDateChange={setSelectedDate}
+      />
+
+      {/* §17 of 要件定義書 — Life Journey. Hierarchical Country → City
+          panel of every distinct location Frank has visited, in
+          chronological order. Clicking an entry drives selectedDate
+          to the entry's midpoint so Globe + Timeline filter to that
+          period. */}
+      <LifeJourney
+        photos={photos}
+        open={lifeJourneyOpen}
+        onClose={() => setLifeJourneyOpen(false)}
+        onSelectEntry={(entry) => {
+          const midMs =
+            (entry.startDate.getTime() + entry.endDate.getTime()) / 2;
+          setSelectedDate(new Date(midMs));
+          setLifeJourneyOpen(false);
+        }}
       />
     </>
   );
