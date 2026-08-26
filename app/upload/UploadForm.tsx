@@ -203,6 +203,36 @@ export function UploadForm() {
             : it,
         ),
       );
+
+      // Generate a 256x256 webp thumbnail in the background. §23 of
+      // the spec: original-only on the home page is a perf cliff once
+      // Frank has 30+ photos — R2 bandwidth + decode cost blow up.
+      // Failures here are non-fatal: the upload already succeeded and
+      // the UI falls back to public_url when thumbnail_url is null.
+      // We don't surface a per-file error in the queue because the
+      // user-visible state already reads "done".
+      try {
+        const thumbRes = await fetch('/api/process-thumbnail', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key }),
+        });
+        if (!thumbRes.ok) {
+          const text = await thumbRes.text();
+          console.warn(
+            '[thumbnail generation non-fatal]',
+            item.id,
+            thumbRes.status,
+            text.slice(0, 120),
+          );
+        }
+      } catch (err) {
+        console.warn(
+          '[thumbnail generation threw]',
+          item.id,
+          err instanceof Error ? err.message : String(err),
+        );
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setQueue((q) =>

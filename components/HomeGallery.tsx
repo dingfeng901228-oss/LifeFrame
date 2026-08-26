@@ -10,6 +10,7 @@ type PhotoRow = {
   lat: number | null;
   lng: number | null;
   public_url: string;
+  thumbnail_url: string | null;
   filename: string;
   taken_at: string | null;
   created_at: string;
@@ -49,7 +50,7 @@ export function HomeGallery() {
         const { data, error } = await supabase
           .from('photos')
           .select(
-            'key, lat, lng, public_url, filename, taken_at, created_at, camera_make, camera_model, categories, location_name',
+            'key, lat, lng, public_url, thumbnail_url, filename, taken_at, created_at, camera_make, camera_model, categories, location_name',
           )
           .order('created_at', { ascending: false })
           .limit(500);
@@ -324,7 +325,7 @@ export function HomeGallery() {
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={p.public_url}
+                        src={p.thumbnail_url || p.public_url}
                         alt={p.filename}
                         className="h-full w-full object-cover"
                         loading="lazy"
