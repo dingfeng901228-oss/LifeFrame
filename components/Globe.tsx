@@ -59,6 +59,11 @@ export function Globe({ markers = [], onMarkerSelect, onClusterClick }: Props = 
     y: number;
     rot: [number, number];
   } | null>(null);
+  // Tracks whether the pointer moved enough between pointerdown and
+  // pointerup to count as a drag (vs. a click). Used by the up
+  // handler to decide between "pause because user dragged" and
+  // "toggle because user just clicked on empty globe area".
+  const movedRef = useRef(false);
 
   // ── Track wrapper size ─────────────────────────────────────────
   // Now that the wrapper is full-bleed, the SVG and viewBox need
@@ -219,7 +224,11 @@ export function Globe({ markers = [], onMarkerSelect, onClusterClick }: Props = 
         y: e.clientY,
         rot: [...rotation],
       };
-      setAutoRotate(false);
+      movedRef.current = false;
+      // Don't pause on pointerdown — the up handler decides based
+      // on whether the user dragged (→ pause) or just clicked
+      // (→ toggle). The pause/continue button was removed in #6983
+      // so the empty-globe click is now the only way to resume.
       window.addEventListener('pointermove', handleWindowPointerMove);
       window.addEventListener('pointerup', handleWindowPointerUp, {
         once: true,
@@ -237,6 +246,12 @@ export function Globe({ markers = [], onMarkerSelect, onClusterClick }: Props = 
       if (!d) return;
       const dx = e.clientX - d.x;
       const dy = e.clientY - d.y;
+      // Anything beyond a small threshold (3px) counts as a drag
+      // rather than a click — needed so the up handler can decide
+      // pause-vs-toggle.
+      if (!movedRef.current && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
+        movedRef.current = true;
+      }
       let lambda = (d.rot[0] + dx * DRAG_SENSITIVITY) % 360;
       if (lambda > 180) lambda -= 360;
       if (lambda < -180) lambda += 360;
@@ -247,7 +262,18 @@ export function Globe({ markers = [], onMarkerSelect, onClusterClick }: Props = 
   );
 
   const handleWindowPointerUp = useCallback(() => {
+    // If the pointer didn't move between down and up, treat it as a
+    // click on the empty globe area → toggle auto-rotate. If it did
+    // move, the user was dragging → leave the globe paused (the
+    // setAutoRotate(false) call would have been issued the first
+    // time, but we can just toggle false again — no harm).
+    if (movedRef.current) {
+      setAutoRotate(false);
+    } else {
+      setAutoRotate((v) => !v);
+    }
     dragRef.current = null;
+    movedRef.current = false;
     window.removeEventListener('pointermove', handleWindowPointerMove);
     window.removeEventListener('pointerup', handleWindowPointerUp);
     window.removeEventListener('pointercancel', handleWindowPointerUp);
@@ -415,16 +441,7 @@ export function Globe({ markers = [], onMarkerSelect, onClusterClick }: Props = 
         </svg>
       </div>
 
-      <div className="pointer-events-none absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-2">
-        <button
-          type="button"
-          onClick={() => setAutoRotate((v) => !v)}
-          className="pointer-events-auto rounded-full border border-white/20 bg-black/70 px-4 py-1.5 text-xs text-white/80 backdrop-blur-sm transition hover:bg-black/90"
-          aria-label={autoRotate ? '暂停旋转' : '继续旋转'}
-        >
-          {autoRotate ? '❚❚ 暂停' : '▶ 继续'}
-        </button>
-      </div>
+      <div className="pointer-events-none absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-2" />
     </div>
   );
 }
