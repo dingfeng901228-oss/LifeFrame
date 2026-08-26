@@ -29,9 +29,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             LifeFrame
           </Link>
           <nav className="flex items-center gap-6 text-sm text-white/60">
-            <Link href="/" className="hover:text-white">
-              地球仪
-            </Link>
             <Link href="/upload" className="hover:text-white">
               上传
             </Link>

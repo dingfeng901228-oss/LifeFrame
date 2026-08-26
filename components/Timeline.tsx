@@ -84,17 +84,6 @@ export function Timeline({
     });
   }, [photoPositions, selectedDate, windowDays]);
 
-  // Year ticks
-  const ticks = useMemo(() => {
-    const out: { date: Date; label: string }[] = [];
-    const startYear = minDate.getFullYear();
-    const endYear = maxDate.getFullYear();
-    for (let y = startYear; y <= endYear; y++) {
-      out.push({ date: new Date(y, 0, 1), label: `${y}` });
-    }
-    return out;
-  }, [minDate, maxDate]);
-
   const positionFor = useCallback(
     (d: Date) =>
       Math.max(
@@ -225,19 +214,6 @@ export function Timeline({
               : 'cursor-pointer border-white/10 hover:border-white/20'
           }`}
         >
-          {/* Year ticks */}
-          {ticks.map((t) => (
-            <div
-              key={`y-${t.label}`}
-              className="pointer-events-none absolute top-0 bottom-0 border-l border-white/25"
-              style={{ left: `${positionFor(t.date)}%` }}
-            >
-              <span className="absolute left-1 top-1 text-[10px] tracking-wider text-white/70">
-                {t.label}
-              </span>
-            </div>
-          ))}
-
           {/* Photo keyframe dots — one per photo, positioned by
               taken_at (fallback created_at) along the track. Cyan
               dot is the same color as the active window overlay so
