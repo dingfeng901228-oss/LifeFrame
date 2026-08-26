@@ -81,15 +81,18 @@ export function HomeGallery() {
     };
   }, []);
 
-  // ESC closes detail first, then gallery
+  // ESC cascades through modals — top-most closes first.
+  // Detail modal wins over On This Day, which wins over Cluster.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       if (selected) setSelected(null);
+      else if (onThisDayOpen) setOnThisDayOpen(false);
+      else if (clusterOpen) setClusterOpen(false);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selected]);
+  }, [selected, onThisDayOpen, clusterOpen]);
 
   // Photos with GPS coords that also fall inside the selected date window
   // (if any). Empty selection = all photos. This is what drives the
