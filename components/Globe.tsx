@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   geoOrthographic,
   geoPath,
@@ -125,6 +125,60 @@ export function Globe({ markers = [], onMarkerSelect }: Props = {}) {
     }
     return out;
   }, [markers, projection]);
+
+  // ── Cluster by screen-space proximity (§5.3 of 要件定義書) ───
+  // At low zoom, markers compress toward each other on screen, so
+  // anything within ~28px of another marker merges into a cluster.
+  // As the user zooms in (or clicks a cluster to zoom), markers
+  // spread out and clusters split. Single-marker clusters render as
+  // individual dots; multi-marker clusters render as a circle with
+  // a count. Threshold is in screen px, not degrees — it works
+  // across the full zoom range because the projection is pixel-based.
+  const CLUSTER_PX = 28;
+  const clusters = useMemo(() => {
+    const used = new Set<number>();
+    const out: Array<{
+      i: number;
+      cx: number;
+      cy: number;
+      count: number;
+      indices: number[];
+    }> = [];
+    const thresholdSq = CLUSTER_PX * CLUSTER_PX;
+    for (const seed of projectedMarkers) {
+      if (used.has(seed.i)) continue;
+      const group: number[] = [seed.i];
+      used.add(seed.i);
+      let cx = seed.x;
+      let cy = seed.y;
+      for (const other of projectedMarkers) {
+        if (used.has(other.i)) continue;
+        const dx = other.x - seed.x;
+        const dy = other.y - seed.y;
+        if (dx * dx + dy * dy < thresholdSq) {
+          group.push(other.i);
+          used.add(other.i);
+          cx += other.x;
+          cy += other.y;
+        }
+      }
+      out.push({
+        i: seed.i,
+        cx: cx / group.length,
+        cy: cy / group.length,
+        count: group.length,
+        indices: group,
+      });
+    }
+    return out;
+  }, [projectedMarkers]);
+
+  // Cluster click → zoom in by 1.8×. The next render re-clusters at
+  // the new scale; tight clusters naturally split. Capped by MAX_SCALE
+  // so we don't run off the rails on repeated clicks.
+  const zoomIntoCluster = useCallback(() => {
+    setScale((s) => Math.min(s * 1.8, MAX_SCALE));
+  }, []);
 
   // ── Drag handling (pointer events for unified mouse/touch) ─────
   // Window-level pointermove/pointerup listeners are attached on
@@ -251,42 +305,78 @@ export function Globe({ markers = [], onMarkerSelect }: Props = {}) {
             ))}
           </g>
 
-          {/* Photo markers — SVG <g> with onClick. The first circle is an
-              invisible hit-test area (r=18, fill=transparent,
-              pointer-events=all) so the click target is much bigger
-              than the visible 3.5px dot. Without this the user has to
-              click a ~7px target on a globe that moves every frame. */}
+          {/* Photo markers — clusters or individuals, depending on count.
+              Single-marker clusters render as the legacy cyan dot;
+              multi-marker clusters render as a bigger circle with a
+              count label, and clicking zooms in instead of opening
+              the detail modal. */}
           <g>
-            {projectedMarkers.map((m) => (
-              <g
-                key={m.i}
-                transform={`translate(${m.x}, ${m.y})`}
-                style={{ cursor: 'pointer' }}
-                onClick={() => onMarkerSelect?.(m.i)}
-                onMouseEnter={(e) => {
-                  const target = e.currentTarget;
-                  target.setAttribute('data-hover', '1');
-                }}
-              >
-                <circle
-                  r={18}
-                  fill="transparent"
-                  pointerEvents="all"
-                />
-                <circle
-                  r={9}
-                  fill="rgba(103, 232, 249, 0.22)"
-                  stroke="rgba(103, 232, 249, 0.5)"
-                  strokeWidth={1}
-                  pointerEvents="none"
-                />
-                <circle
-                  r={3.5}
-                  fill="rgb(103, 232, 249)"
-                  pointerEvents="none"
-                />
-              </g>
-            ))}
+            {clusters.map((c) => {
+              if (c.count === 1) {
+                return (
+                  <g
+                    key={`m-${c.i}`}
+                    transform={`translate(${c.cx}, ${c.cy})`}
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => onMarkerSelect?.(c.i)}
+                    onMouseEnter={(e) => {
+                      const target = e.currentTarget;
+                      target.setAttribute('data-hover', '1');
+                    }}
+                  >
+                    <circle r={18} fill="transparent" pointerEvents="all" />
+                    <circle
+                      r={9}
+                      fill="rgba(103, 232, 249, 0.22)"
+                      stroke="rgba(103, 232, 249, 0.5)"
+                      strokeWidth={1}
+                      pointerEvents="none"
+                    />
+                    <circle
+                      r={3.5}
+                      fill="rgb(103, 232, 249)"
+                      pointerEvents="none"
+                    />
+                  </g>
+                );
+              }
+              // Multi-marker cluster
+              const r = Math.min(14 + c.count * 1.5, 36);
+              return (
+                <g
+                  key={`c-${c.i}`}
+                  transform={`translate(${c.cx}, ${c.cy})`}
+                  style={{ cursor: 'pointer' }}
+                  onClick={zoomIntoCluster}
+                >
+                  {/* Outer halo for affordance */}
+                  <circle
+                    r={r + 6}
+                    fill="rgba(103, 232, 249, 0.12)"
+                    pointerEvents="all"
+                  />
+                  {/* Cluster body */}
+                  <circle
+                    r={r}
+                    fill="rgba(103, 232, 249, 0.45)"
+                    stroke="rgba(103, 232, 249, 0.9)"
+                    strokeWidth={1.5}
+                    pointerEvents="none"
+                  />
+                  {/* Count label */}
+                  <text
+                    textAnchor="middle"
+                    dy="0.35em"
+                    fontSize={Math.min(11 + Math.log10(c.count) * 6, 18)}
+                    fontWeight="bold"
+                    fill="rgb(255, 255, 255)"
+                    style={{ pointerEvents: 'none', userSelect: 'none' }}
+                  >
+                    {c.count}
+                  </text>
+                </g>
+              );
+            })}
           </g>
         </svg>
       </div>
