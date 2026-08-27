@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   geoOrthographic,
   geoPath,
@@ -46,7 +46,7 @@ type Size = { w: number; h: number };
  * together — the previous version had a fixed ocean radius which
  * meant the sphere "grew" past its outline when you scrolled in.
  */
-export function Globe({ markers = [], onMarkerSelect, onClusterClick }: Props = {}) {
+function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {}) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState<Size>({ w: 800, h: 800 });
   const [rotation, setRotation] =
@@ -447,3 +447,12 @@ export function Globe({ markers = [], onMarkerSelect, onClusterClick }: Props = 
     </div>
   );
 }
+
+// Wrap with React.memo so the parent re-rendering every animation
+// tick (Time Travel drives selectedDate 5x/sec, which changes
+// markers) does NOT force Globe to re-render unless its props
+// actually changed. Markers reference is stable across ticks when
+// the visible photo set is unchanged (HomeGallery uses useMemo
+// over visiblePhotos); handlers must be useCallback'd in the
+// parent for the shallow-compare skip to actually fire.
+export const Globe = memo(GlobeImpl);

@@ -30,7 +30,9 @@ const SPEED_OPTIONS: Array<{ label: string; daysPerSecond: number }> = [
   { label: '8×', daysPerSecond: 240 },
 ];
 
-const TICK_MS = 100; // 10 fps state updates; rAF itself runs at 60fps
+const TICK_MS = 200; // 5 fps state updates — halves Globe re-renders during
+// playback without slowing animation speed (advance rate per second
+// is preserved; we just halve React state updates per second).
 const DAY_MS = 24 * 3600 * 1000;
 const WINDOW_DAYS = 60; // matches TIMELINE_WINDOW_DAYS in HomeGallery
 

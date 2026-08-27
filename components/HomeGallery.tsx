@@ -143,6 +143,32 @@ export function HomeGallery() {
     [visiblePhotos],
   );
 
+  // Stable Globe handlers — useCallback so the React.memo wrap
+  // around Globe can short-circuit re-renders when markers + handlers
+  // are unchanged across selectedDate ticks during Time Travel.
+  const handleMarkerSelect = useCallback(
+    (idx: number) => {
+      const photo = visiblePhotos[idx];
+      if (photo) setSelected(photo);
+    },
+    [visiblePhotos],
+  );
+
+  const handleClusterClick = useCallback(
+    (indices: number[]) => {
+      const photos = indices
+        .map((i) => visiblePhotos[i])
+        .filter(
+          (p): p is PhotoRow & { lat: number; lng: number } => Boolean(p),
+        );
+      if (photos.length > 0) {
+        setClusterPhotos(photos);
+        setClusterOpen(true);
+      }
+    },
+    [visiblePhotos],
+  );
+
   const visibleCount = visiblePhotos.length;
 
   // ── On This Day (§19 of 要件定義書) ─────────────────────────────
@@ -182,22 +208,8 @@ export function HomeGallery() {
       <div className="absolute inset-0">
         <Globe
           markers={markers}
-          onMarkerSelect={(idx) => {
-            const photo = visiblePhotos[idx];
-            if (photo) setSelected(photo);
-          }}
-          onClusterClick={(indices) => {
-            const photos = indices
-              .map((i) => visiblePhotos[i])
-              .filter(
-                (p): p is PhotoRow & { lat: number; lng: number } =>
-                  Boolean(p),
-              );
-            if (photos.length > 0) {
-              setClusterPhotos(photos);
-              setClusterOpen(true);
-            }
-          }}
+          onMarkerSelect={handleMarkerSelect}
+          onClusterClick={handleClusterClick}
         />
       </div>
 
