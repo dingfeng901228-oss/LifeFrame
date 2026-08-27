@@ -30,6 +30,15 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
   // sticky action bar; the modal itself lives near the delete
   // confirm modal so the two mass actions share visual precedent.
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+  // Frank #7115: target picked in step 1 of the bulk-category
+  // modal. null = still on the picker (step 1); non-null = user
+  // advanced to the confirm step (step 2) with that target.
+  // Driving the step transition this way keeps the modal single-
+  // instance — the picker and confirm content swap in place via
+  // conditional rendering rather than two stacked modals.
+  const [categoryTarget, setCategoryTarget] = useState<
+    'person' | 'scenery' | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -139,6 +148,10 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
         );
         setSelected(new Set());
         setCategoryModalOpen(false);
+        // Frank #7115: clear the confirm-step target so reopening
+        // the modal lands back on step 1 (the picker), not on a
+        // stale step 2 with the previous run's target still set.
+        setCategoryTarget(null);
         router.refresh();
         if (json.updated === 0) {
           setError('没找到对应照片，可能已被删除');
@@ -271,80 +284,140 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
         </div>
       )}
 
-      {/* Frank #7108 #3: bulk-categories picker modal. Single-step
-          modal (no extra confirmation step) because (a) the user
-          has already actively chosen 人物 / 风景 in the dialog, and
-          (b) the action is reversible in one click — if you misfire
-          and pick 人物 on a batch that should have been 风景, just
-          re-select and pick 风景, no data loss like delete. Server-
-          side route still re-validates admin and strictly whitelists
-          the category values (lib: see route.ts). */}
+      {/* Frank #7108 #3 / fixed in #7115: bulk-categories modal is
+          now a two-step picker→confirm flow. The original single-
+          step design (pick → apply in one click) felt too eager to
+          Frank — he explicitly wanted a 确认 step between picking
+          the target category and the action firing (ref: #7115
+          "批量分类的弹框，选完分类之后，没有确认按键"). Step 1
+          (categoryTarget = null) shows the picker cards; clicking
+          a card sets categoryTarget and the modal swaps to step 2,
+          a confirm surface with the chosen target highlighted and
+          two buttons: ← 返回 / 确认应用. Only the 确认应用 button
+          calls applyBulkCategory. Backdrop click + the step-1
+          取消 button both reset both modal states. The single-
+          modal-instance design (vs two stacked modals) keeps the
+          state machine flat: just (open, target). */}
       {categoryModalOpen && (
         <div
           role="dialog"
           aria-modal="true"
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6 backdrop-blur-sm"
           onClick={() => {
-            if (!pending) setCategoryModalOpen(false);
+            if (pending) return;
+            setCategoryModalOpen(false);
+            setCategoryTarget(null);
           }}
         >
           <div
             className="w-full max-w-md rounded-lg border border-amber-500/40 bg-[var(--bg-elevated)] p-6 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-xl font-medium text-white">🔁 批量分类</h3>
-            <p className="mt-3 text-sm text-white/70">
-              将选中的{' '}
-              <strong className="text-amber-300">{selected.size}</strong>{' '}
-              张照片的分类替换为：
-            </p>
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => applyBulkCategory('person')}
-                disabled={pending}
-                className="rounded-lg border border-white/15 bg-white/[0.04] p-4 text-center transition hover:border-cyan-400/60 hover:bg-cyan-400/10 disabled:opacity-50"
-              >
-                <span className="block text-3xl" aria-hidden="true">
-                  👤
-                </span>
-                <span className="mt-2 block text-sm font-medium text-white">
-                  设为人物
-                </span>
-                <span className="mt-1 block text-[10px] uppercase tracking-wider text-white/40">
-                  person
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => applyBulkCategory('scenery')}
-                disabled={pending}
-                className="rounded-lg border border-white/15 bg-white/[0.04] p-4 text-center transition hover:border-emerald-400/60 hover:bg-emerald-400/10 disabled:opacity-50"
-              >
-                <span className="block text-3xl" aria-hidden="true">
-                  🏞️
-                </span>
-                <span className="mt-2 block text-sm font-medium text-white">
-                  设为风景
-                </span>
-                <span className="mt-1 block text-[10px] uppercase tracking-wider text-white/40">
-                  scenery
-                </span>
-              </button>
-            </div>
-            <p className="mt-4 text-xs text-white/40">
-              设为已选中的同一分类时无变化；切换时直接替换（不合并）。
-            </p>
-            <div className="mt-6 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setCategoryModalOpen(false)}
-                disabled={pending}
-                className="rounded border border-white/15 px-4 py-2 text-sm text-white/80 transition hover:border-white/40 hover:text-white disabled:opacity-50"
-              >
-                取消
-              </button>
-            </div>
+            {!categoryTarget ? (
+              // Step 1 — picker
+              <>
+                <h3 className="text-xl font-medium text-white">🔁 批量分类</h3>
+                <p className="mt-3 text-sm text-white/70">
+                  将选中的{' '}
+                  <strong className="text-amber-300">{selected.size}</strong>{' '}
+                  张照片的分类替换为：
+                </p>
+                <div className="mt-5 grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setCategoryTarget('person')}
+                    disabled={pending}
+                    className="rounded-lg border border-white/15 bg-white/[0.04] p-4 text-center transition hover:border-cyan-400/60 hover:bg-cyan-400/10 disabled:opacity-50"
+                  >
+                    <span className="block text-3xl" aria-hidden="true">
+                      👤
+                    </span>
+                    <span className="mt-2 block text-sm font-medium text-white">
+                      人物
+                    </span>
+                    <span className="mt-1 block text-[10px] uppercase tracking-wider text-white/40">
+                      person
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCategoryTarget('scenery')}
+                    disabled={pending}
+                    className="rounded-lg border border-white/15 bg-white/[0.04] p-4 text-center transition hover:border-emerald-400/60 hover:bg-emerald-400/10 disabled:opacity-50"
+                  >
+                    <span className="block text-3xl" aria-hidden="true">
+                      🏞️
+                    </span>
+                    <span className="mt-2 block text-sm font-medium text-white">
+                      风景
+                    </span>
+                    <span className="mt-1 block text-[10px] uppercase tracking-wider text-white/40">
+                      scenery
+                    </span>
+                  </button>
+                </div>
+                <p className="mt-4 text-xs text-white/40">
+                  选定之后会有确认步骤。
+                </p>
+                <div className="mt-6 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCategoryModalOpen(false);
+                      setCategoryTarget(null);
+                    }}
+                    disabled={pending}
+                    className="rounded border border-white/15 px-4 py-2 text-sm text-white/80 transition hover:border-white/40 hover:text-white disabled:opacity-50"
+                  >
+                    取消
+                  </button>
+                </div>
+              </>
+            ) : (
+              // Step 2 — confirm
+              <>
+                <h3 className="text-xl font-medium text-white">确认应用？</h3>
+                <p className="mt-3 text-sm text-white/70">
+                  将选中的{' '}
+                  <strong className="text-amber-300">{selected.size}</strong>{' '}
+                  张照片的分类替换为：
+                </p>
+                <div className="mt-4 flex items-center justify-center gap-3 rounded-lg border border-amber-500/40 bg-amber-500/5 p-5">
+                  <span className="text-4xl" aria-hidden="true">
+                    {categoryTarget === 'person' ? '👤' : '🏞️'}
+                  </span>
+                  <div className="text-left">
+                    <span className="block text-base font-medium text-white">
+                      {categoryTarget === 'person' ? '人物' : '风景'}
+                    </span>
+                    <span className="mt-0.5 block text-[10px] uppercase tracking-wider text-white/40">
+                      {categoryTarget}
+                    </span>
+                  </div>
+                </div>
+                <p className="mt-4 text-xs text-white/40">
+                  设为同一分类时无变化；切换时直接替换（不合并）。
+                </p>
+                <div className="mt-6 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCategoryTarget(null)}
+                    disabled={pending}
+                    className="rounded border border-white/15 px-4 py-2 text-sm text-white/80 transition hover:border-white/40 hover:text-white disabled:opacity-50"
+                  >
+                    ← 返回
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyBulkCategory(categoryTarget)}
+                    disabled={pending}
+                    className="rounded bg-amber-500 px-4 py-2 text-sm font-medium text-black transition hover:bg-amber-400 disabled:opacity-50"
+                  >
+                    {pending ? '应用中…' : '确认应用'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
