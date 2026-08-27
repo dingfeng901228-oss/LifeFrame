@@ -39,20 +39,33 @@ export type Viewer = {
  * 'admin' in Supabase Auth dashboard (Auth → Users → Edit user →
  * app_metadata → {"role": "admin"}). Default role for all other
  * accounts is 'user'.
+ *
+ * Frank #7108 #2: this used to call `getUser()`, which makes a
+ * network round-trip to Supabase on every Server Component render.
+ * Combined with `app/upload/page.tsx`'s `redirect('/')` for non-
+ * admins, that network call was intermittently failing and giving
+ * admin users a silent "looks like a soft refresh" UX: click 上传
+ * from `/` → page server-renders → getUser() races → returns
+ * role=guest for one frame → 307 back to `/` → browser never
+ * visually leaves `/`. Now we use `getSession()` (local JWT-only,
+ * same approach middleware.ts already adopted) — the role is in
+ * the JWT itself so we don't need a network call. app_metadata
+ * lives in the access-token payload, so this returns identical
+ * role info without the timing risk.
  */
 export async function getViewer(): Promise<Viewer> {
   try {
     const supabase = await createSupabaseServerClient();
-    const { data, error } = await supabase.auth.getUser();
-    if (error || !data.user) {
+    const { data, error } = await supabase.auth.getSession();
+    if (error || !data.session?.user) {
       return { role: 'guest', userId: null, email: null };
     }
-    const roleMeta = data.user.app_metadata?.role;
+    const roleMeta = data.session.user.app_metadata?.role;
     const role: ViewerRole = roleMeta === 'admin' ? 'admin' : 'user';
     return {
       role,
-      userId: data.user.id,
-      email: data.user.email ?? null,
+      userId: data.session.user.id,
+      email: data.session.user.email ?? null,
     };
   } catch {
     return { role: 'guest', userId: null, email: null };
