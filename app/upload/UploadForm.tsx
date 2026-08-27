@@ -27,7 +27,13 @@ type BatchStatus =
   | 'uploading'
   | 'done'
   | 'partial'
-  | 'error';
+  | 'error'
+  // Frank #7108 #1: new terminal state set when the user clicks
+  // "取消上传" mid-flight. Same UI surface as 'partial' (some items
+  // may have completed before the cancel flag was checked) but with
+  // a distinct status colour so the user understands "I stopped
+  // this on purpose, not because something broke".
+  | 'cancelled';
 
 export function UploadForm() {
   const [batchStatus, setBatchStatus] = useState<BatchStatus>('idle');
@@ -43,6 +49,12 @@ export function UploadForm() {
   // the first photo's EXIF so users usually don't have to do anything.
   const [takenAtManual, setTakenAtManual] = useState<string>('');
   const inputRef = useRef<HTMLInputElement>(null);
+  // Frank #7108 #1: cancel flag — set true by the "取消上传" button
+  // mid-upload, checked by the chunked loop in doUpload() to stop
+  // scheduling new chunks. In-flight fetches continue (we don't
+  // abort network requests without AbortController; aborting would
+  // require threading AbortSignal through every fetch + the PUT).
+  const cancelRef = useRef(false);
 
   async function onChange(e: React.ChangeEvent<HTMLInputElement>) {
     setError(null);
@@ -260,15 +272,27 @@ export function UploadForm() {
 
   async function doUpload() {
     if (queue.length === 0) return;
+    cancelRef.current = false;
     setBatchStatus('uploading');
     setError(null);
 
+    // Skip already-done items on retry — after a cancel + 上传 click
+    // the user shouldn't see the same photo PUT twice and pile up
+    // duplicate keys in R2. 'error' items are retried (network blip,
+    // signing hiccup); 'pending'/'extracting' shouldn't exist here
+    // by the time we get to doUpload(), but if they do they're
+    // treated as eligible.
+    const eligible = queue.filter((q) => q.status !== 'done');
+
     // Chunked concurrency: MAX_CONCURRENCY PUTs in flight at once. R2
     // is happy with a few parallel uploads but 30 simultaneous PUTs
-    // would saturate the connection pool.
+    // would saturate the connection pool. Frank #7108: cancelRef is
+    // checked between chunks — in-flight chunks finish their work
+    // (we don't abort fetches) but no new chunks start after cancel.
     const results: PromiseSettledResult<void>[] = [];
-    for (let i = 0; i < queue.length; i += MAX_CONCURRENCY) {
-      const chunk = queue.slice(i, i + MAX_CONCURRENCY);
+    for (let i = 0; i < eligible.length; i += MAX_CONCURRENCY) {
+      if (cancelRef.current) break;
+      const chunk = eligible.slice(i, i + MAX_CONCURRENCY);
       const settled = await Promise.allSettled(
         chunk.map((item) => uploadOne(item, picked, categories, takenAtManual)),
       );
@@ -276,9 +300,11 @@ export function UploadForm() {
     }
 
     const failures = results.filter((r) => r.status === 'rejected').length;
-    if (failures === 0) {
+    if (cancelRef.current) {
+      setBatchStatus('cancelled');
+    } else if (failures === 0) {
       setBatchStatus('done');
-    } else if (failures === queue.length) {
+    } else if (failures === eligible.length && eligible.length > 0) {
       setBatchStatus('error');
     } else {
       setBatchStatus('partial');
@@ -292,14 +318,56 @@ export function UploadForm() {
     setCategories([]);
     setTakenAtManual('');
     setError(null);
+    cancelRef.current = false;
     if (inputRef.current) inputRef.current.value = '';
+  }
+
+  // Frank #7108 #1: re-pick flow — clear the current selection and
+  // immediately re-open the native file picker, so the user can
+  // swap their selection in one click instead of cancel-then-click.
+  function reSelect() {
+    setQueue([]);
+    setPicked(null);
+    setCategories([]);
+    setTakenAtManual('');
+    setError(null);
+    cancelRef.current = false;
+    setBatchStatus('idle');
+    if (inputRef.current) inputRef.current.value = '';
+    inputRef.current?.click();
+  }
+
+  // Frank #7108 #1: cancel selection — clear without auto-opening
+  // the picker. Returns to the empty 'idle' state so the user can
+  // either walk away (using the "返回首页" link) or click the file
+  // input manually.
+  function cancelSelection() {
+    reset();
+  }
+
+  // Frank #7108 #1: cancel mid-upload. Sets the cancel flag; the
+  // current chunk finishes its parallel uploadOne() calls (each
+  // uploadOne updates its own item's status to 'done' or 'error'
+  // independently), then the loop sees cancelRef.current=true at
+  // its next break check and bails. doUpload() then sets the
+  // batchStatus to 'cancelled'.
+  function cancelUpload() {
+    cancelRef.current = true;
   }
 
   const doneCount = queue.filter((q) => q.status === 'done').length;
   const errorCount = queue.filter((q) => q.status === 'error').length;
+  const eligibleCount = queue.filter((q) => q.status !== 'done').length;
   const busy = batchStatus === 'uploading';
+  // Pickers visible whenever the user can still change batch-level
+  // settings (location / time / categories) and have those changes
+  // apply. Hidden during the actual upload run and after terminal
+  // 'done' state — there they would just be confusing leftovers.
+  // Note: 'cancelled' keeps the pickers visible so the user can
+  // tweak settings before clicking 上传 again to resume the rest.
   const showPickers =
-    queue.length > 0 && batchStatus !== 'uploading' && batchStatus !== 'done';
+    queue.length > 0 &&
+    (batchStatus === 'ready' || batchStatus === 'cancelled');
 
   return (
     <div className="space-y-6">
@@ -346,6 +414,11 @@ export function UploadForm() {
         )}
         {batchStatus === 'error' && (
           <span className="text-rose-300">批量上传失败，请看下方列表</span>
+        )}
+        {batchStatus === 'cancelled' && (
+          <span className="text-amber-300">
+            已取消 — 完成 {doneCount}/{queue.length}
+          </span>
         )}
       </div>
 
@@ -480,14 +553,65 @@ export function UploadForm() {
       )}
 
       {batchStatus === 'ready' && (
-        <button
-          type="button"
-          onClick={doUpload}
-          disabled={busy}
-          className="block w-full rounded bg-white px-4 py-3 text-sm font-medium text-black transition hover:bg-white/90 disabled:opacity-50"
-        >
-          上传 {queue.length} 张
-        </button>
+        <>
+          <button
+            type="button"
+            onClick={doUpload}
+            disabled={busy}
+            className="block w-full rounded bg-white px-4 py-3 text-sm font-medium text-black transition hover:bg-white/90 disabled:opacity-50"
+          >
+            上传 {queue.length} 张
+          </button>
+          {/* Frank #7108 #1: cancel/reselect/home row. Three secondary
+              actions so the user can change their mind without having
+              to upload first. 重新选择 clears + reopens the file
+              picker; 取消选择 clears without auto-reopen; 返回首页
+              is a plain anchor to leave the page entirely. */}
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={reSelect}
+              className="rounded border border-white/15 px-3 py-1.5 text-xs text-white/70 transition hover:border-white/30 hover:bg-white/5 hover:text-white"
+            >
+              🔄 重新选择
+            </button>
+            <button
+              type="button"
+              onClick={cancelSelection}
+              className="rounded border border-white/15 px-3 py-1.5 text-xs text-white/70 transition hover:border-white/30 hover:bg-white/5 hover:text-white"
+            >
+              ✕ 取消选择
+            </button>
+            <a
+              href="/"
+              className="rounded border border-white/15 px-3 py-1.5 text-xs text-white/70 transition hover:border-white/30 hover:bg-white/5 hover:text-white"
+            >
+              返回首页
+            </a>
+          </div>
+        </>
+      )}
+
+      {/* Frank #7108 #1: cancel mid-upload. Stops scheduling new
+          chunks; the current chunk finishes naturally. The button
+          stays out of the file-input / picker area so it doesn't
+          get hidden under batch-level controls. */}
+      {batchStatus === 'uploading' && (
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={cancelUpload}
+            className="rounded border border-rose-500/30 bg-rose-900/10 px-3 py-1.5 text-xs text-rose-300 transition hover:border-rose-500/50 hover:bg-rose-900/20"
+          >
+            ✕ 取消上传（已完成 {doneCount}/{queue.length}）
+          </button>
+          <a
+            href="/"
+            className="rounded border border-white/15 px-3 py-1.5 text-xs text-white/70 transition hover:border-white/30 hover:bg-white/5 hover:text-white"
+          >
+            返回首页
+          </a>
+        </div>
       )}
 
       {/* Per-file progress list */}
@@ -530,23 +654,41 @@ export function UploadForm() {
         </div>
       )}
 
+      {/* Frank #7108 #1: post-upload action row. After partial/error
+          the user can re-pick; after 'cancelled' they should also be
+          able to retry the eligible (non-done) items in-place via
+          the same 上传 button — so we expose a 继续上传 button here
+          instead of forcing a re-pick. Returning home is always
+          available. */}
       {(batchStatus === 'done' ||
         batchStatus === 'partial' ||
-        batchStatus === 'error') && (
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={reset}
-            className="rounded border border-white/15 px-3 py-1.5 text-xs text-white/70 hover:bg-white/5"
-          >
-            再选一批
-          </button>
-          <a
-            href="/"
-            className="rounded border border-white/30 bg-white/5 px-3 py-1.5 text-xs text-white/80 transition hover:border-white/40 hover:text-white"
-          >
-            返回首页
-          </a>
+        batchStatus === 'error' ||
+        batchStatus === 'cancelled') && (
+        <div className="space-y-2">
+          {batchStatus === 'cancelled' && eligibleCount > 0 && (
+            <button
+              type="button"
+              onClick={doUpload}
+              className="block w-full rounded bg-white px-4 py-3 text-sm font-medium text-black transition hover:bg-white/90"
+            >
+              继续上传剩余 {eligibleCount} 张
+            </button>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={reset}
+              className="rounded border border-white/15 px-3 py-1.5 text-xs text-white/70 hover:bg-white/5"
+            >
+              再选一批
+            </button>
+            <a
+              href="/"
+              className="rounded border border-white/30 bg-white/5 px-3 py-1.5 text-xs text-white/80 transition hover:border-white/40 hover:text-white"
+            >
+              返回首页
+            </a>
+          </div>
         </div>
       )}
 
