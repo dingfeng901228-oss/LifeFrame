@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { createSupabaseServerClient } from '@/lib/supabase-server';
 
 export const metadata: Metadata = {
   title: 'LifeFrame — 用照片，留下生活的痕迹',
@@ -61,42 +60,10 @@ const features = [
 ];
 
 export default async function WelcomePage() {
-  // Fetch a small set of public/unlisted scenery photos so guests can
-  // browse without signing in (Frank #7071: /welcome 游客模式 浏览
-  // 风景照片). RLS auto-excludes 'person' category photos for anon;
-  // we additionally filter visibility to public/unlisted so private
-  // photos stay hidden from the marketing page (privacy §24: private
-  // is owner-only by definition).
-  //
-  // The fetch is wrapped in try/catch so `next build` prerender on
-  // Vercel (where Supabase env isn't injected yet) degrades gracefully
-  // to "no scenery section" instead of failing the whole build.
-  // Runtime requests hit the env normally.
-  let sceneryPhotos: Array<{
-    key: string;
-    thumbnail_url: string | null;
-    public_url: string;
-    filename: string;
-    taken_at: string | null;
-    location_name: string | null;
-  }> = [];
-  try {
-    const supabase = await createSupabaseServerClient();
-    const { data: photos } = await supabase
-      .from('photos')
-      .select(
-        'key, thumbnail_url, public_url, filename, taken_at, location_name, categories, visibility',
-      )
-      .in('visibility', ['public', 'unlisted'])
-      .order('taken_at', { ascending: false })
-      .limit(50);
-    sceneryPhotos = (photos ?? [])
-      .filter((p) => !(p.categories ?? []).includes('person'))
-      .slice(0, 8);
-  } catch {
-    // Env not configured (build-time prerender) or transient Supabase
-    // error. Render without the scenery section.
-  }
+  // Frank #7108 #4: removed the in-page scenery photo grid. Guests
+  // can browse scenery on the actual globe at /, which is the
+  // experience Frank actually wants. The CTA pair at the bottom of
+  // this page now offers 登录/注册 and 游客模式浏览 side-by-side.
 
   return (
     <>
@@ -152,60 +119,32 @@ export default async function WelcomePage() {
             </ul>
           </section>
 
-          {sceneryPhotos.length > 0 && (
-            <section className="mb-16">
-              <div className="mb-6 flex items-baseline justify-between">
-                <h2 className="text-2xl font-light text-black dark:text-white">
-                  🌍 风景照片
-                </h2>
-                <Link
-                  href="/login"
-                  className="text-sm text-black/60 dark:text-white/60 transition hover:text-black dark:hover:text-white"
-                >
-                  登录查看更多 →
-                </Link>
-              </div>
-              <p className="mb-6 text-sm text-black/50 dark:text-white/50">
-                公开分享的风景类照片 — 人物照片需要登录查看
-              </p>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-                {sceneryPhotos.map((p) => (
-                  <Link
-                    key={p.key}
-                    href={`/p/${encodeURIComponent(p.key)}`}
-                    className="group relative overflow-hidden rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.02] transition hover:border-black/30 dark:hover:border-white/30"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={p.thumbnail_url || p.public_url}
-                      alt={p.filename}
-                      className="aspect-square w-full object-cover transition group-hover:scale-105"
-                      loading="lazy"
-                    />
-                    {p.location_name && (
-                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2">
-                        <p className="truncate text-xs text-white/90">
-                          📍 {p.location_name}
-                        </p>
-                      </div>
-                    )}
-                  </Link>
-                ))}
-              </div>
-            </section>
-          )}
-
           <section className="mb-16 rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.02] p-10 text-center">
             <p className="mb-2 text-black/60 dark:text-white/60">准备好开始记录了吗？</p>
             <p className="mb-6 text-sm text-black/40 dark:text-white/40">
-              邮箱 + 密码注册，不需要信用卡
+              邮箱 + 密码注册。或直接以游客模式浏览地球仪上的公开风景照。
             </p>
-            <Link
-              href="/login"
-              className="inline-block rounded-full bg-black px-8 py-3 text-sm font-medium text-white transition hover:bg-black/90 dark:bg-white dark:text-black dark:hover:bg-white/90"
-            >
-              登录 / 注册 →
-            </Link>
+            {/* Frank #7108 #4: dual-CTA. Primary 登录/注册 still
+                routes through /login. Secondary 🌍 游客模式浏览 goes
+                to /, where the HomeGallery component renders the
+                3D globe with RLS-filtered public / non-person photos
+                — that's the guest-browse experience Frank asked for.
+                Middleware was loosened so !session can actually
+                reach / (previously bounced back to /welcome). */}
+            <div className="flex flex-wrap justify-center gap-3">
+              <Link
+                href="/login"
+                className="inline-block rounded-full bg-black px-8 py-3 text-sm font-medium text-white transition hover:bg-black/90 dark:bg-white dark:text-black dark:hover:bg-white/90"
+              >
+                登录 / 注册 →
+              </Link>
+              <Link
+                href="/"
+                className="inline-block rounded-full border border-black/20 px-8 py-3 text-sm font-medium text-black/80 transition hover:border-black/40 hover:text-black dark:border-white/20 dark:text-white/80 dark:hover:border-white/40 dark:hover:text-white"
+              >
+                🌍 游客模式浏览
+              </Link>
+            </div>
           </section>
 
           <footer className="border-t border-black/10 dark:border-white/10 pt-8 text-xs text-black/40 dark:text-white/40">

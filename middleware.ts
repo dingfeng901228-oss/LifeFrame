@@ -53,17 +53,17 @@ export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const wantsUpload = path.startsWith('/upload');
   const wantsLogin = path.startsWith('/login');
-  const wantsHome = path === '/';
   const wantsAdmin = path.startsWith('/admin');
 
-  if (!session && wantsHome) {
-    // Public landing — guests see the marketing page (which has the
-    // login/signup CTA in it). Only /upload and other auth-gated
-    // routes go to /login. This makes / indexable for SEO: Google
-    // crawls /, follows the redirect to /welcome, and indexes the
-    // marketing copy there instead of seeing "blocked by robots.txt".
-    return NextResponse.redirect(new URL('/welcome', request.url));
-  }
+  // Frank #7108 #4: previously `!session && wantsHome` redirected
+  // guests to /welcome so Google would crawl /, follow the redirect,
+  // and index the marketing copy instead of seeing layout.tsx's
+  // robots: { index: false } default. Frank wants guests to be
+  // able to *browse the globe* at /, so we no longer gate / for
+  // signed-out users. /welcome still exists as a marketing
+  // landing page reachable via direct link / sitemap; the HomeGallery
+  // component (RLS-filtered to public + non-person) handles the
+  // guest-browse surface there.
 
   if (!session && wantsUpload) {
     const redirect = request.nextUrl.clone();
