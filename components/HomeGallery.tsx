@@ -53,7 +53,7 @@ export function HomeGallery() {
   const [likeCount, setLikeCount] = useState(0);
   const [userLiked, setUserLiked] = useState(false);
   const [likePending, setLikePending] = useState(false);
-  // null = not loaded yet / guest; set after auth.getUser() resolves.
+  // null = not loaded yet / guest; set after auth.getSession() resolves.
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
   // §4 of 需求0827 — comments for the currently-selected photo.
   const [comments, setComments] = useState<CommentRow[]>([]);
@@ -585,9 +585,13 @@ export function HomeGallery() {
                   {selected.public_url}
                 </a>
               </p>
-              <p className="pt-2 text-xs text-white/30">
-                （分类编辑 + 删除功能下次迭代）
-              </p>
+              {/* Frank #7129 #3: removed the stale "(分类编辑 + 删除
+                  功能下次迭代)" disclaimer — per-photo edit modal
+                  now exists (Frank #7117 #2 / commit bf00ef1 in
+                  /admin/photos). The detail modal itself still
+                  doesn't have inline edit (admin-only editing lives
+                  in /admin/photos), but the disclaimer framed it
+                  as "next iteration" which is no longer accurate. */}
             </div>
 
             {/* §4 of 需求0827 — comments section. List (server-stored,

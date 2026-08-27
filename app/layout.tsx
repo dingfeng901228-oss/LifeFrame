@@ -113,12 +113,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <header className="relative z-10 flex items-center justify-between border-b border-[var(--border-primary)] bg-[var(--bg-primary)] px-6 py-4 text-[var(--text-primary)]">
           <HomeLogo />
           <nav className="flex items-center gap-6 text-sm text-[var(--text-secondary)]">
-            <Link
-              href="/admin/upload"
-              className="hover:text-[var(--text-primary)] transition"
-            >
-              上传
-            </Link>
+            {/* Frank #7129 #1: removed the global-nav "上传" link.
+                Upload functionality moved into /admin/upload
+                (Frank #7117 #1 / commit 79fddee) and is reachable
+                via the AdminLink → /admin/photos sub-nav tab. The
+                top-level nav no longer needs to advertise it; non-
+                admins never reached /upload anyway (the page
+                redirected non-admins to /). */}
             <AdminLink />
             <ThemeToggle />
             <AuthButton />
