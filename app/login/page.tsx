@@ -29,21 +29,25 @@ function LoginInner() {
             password,
           });
           if (error) throw error;
-          router.push(next);
+          // Frank #7084: always go home after login. `next` was
+          // producing a circular flow (guest visits /welcome →
+          // /login?next=/welcome → login → /welcome, never reaching
+          // the authed app). Authed users land on / (the app).
+          router.push('/');
           router.refresh();
         } else {
           const { data, error } = await supabase.auth.signUp({
             email,
             password,
             options: {
-              emailRedirectTo: `${window.location.origin}/login?next=${encodeURIComponent(next)}`,
+              emailRedirectTo: `${window.location.origin}/login`,
             },
           });
           if (error) throw error;
           // If email confirmation is disabled in Supabase, session is created
           // immediately and we can redirect. Otherwise prompt user to check mail.
           if (data.session) {
-            router.push(next);
+            router.push('/');
             router.refresh();
           } else {
             setMessage('注册成功！请到邮箱点击确认链接后再登录。');
@@ -61,7 +65,7 @@ function LoginInner() {
         {mode === 'signin' ? '登录' : '注册'}
       </h1>
       <p className="mt-2 text-sm text-black/50 dark:text-white/50">
-        LifeFrame 私人照片空间。
+        登录后可查看更多照片，包括人物照片和完整时间轴。
       </p>
       <form onSubmit={onSubmit} className="mt-8 space-y-4">
         <label className="block">

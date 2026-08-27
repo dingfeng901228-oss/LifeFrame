@@ -139,20 +139,31 @@ export async function POST(req: Request) {
   // endpoint can't be used by anon to write photos.user_id = NULL.
   // §1 of 需求0827: every new photo must be tied to its uploader for
   // moderation + cascade delete (deferred to §2).
+  //
+  // Frank #7084: §E.3 + #7084 — only admins can upload. Non-admin
+  // signed-in users get a 403 here even if they bypass the page-level
+  // redirect, so the API surface stays locked down.
   let uploaderId: string | null = null;
   try {
     const supabaseServer = await createSupabaseServerClient();
     const { data: userData, error: userError } =
       await supabaseServer.auth.getUser();
-    if (!userError && userData.user) {
-      uploaderId = userData.user.id;
+    if (userError || !userData.user) {
+      return Response.json(
+        { error: 'unauthenticated — sign in to upload' },
+        { status: 401 },
+      );
     }
+    const role = (userData.user.app_metadata as { role?: string } | undefined)
+      ?.role;
+    if (role !== 'admin') {
+      return Response.json(
+        { error: 'forbidden — admin role required to upload' },
+        { status: 403 },
+      );
+    }
+    uploaderId = userData.user.id;
   } catch {
-    // Fall through — leave uploaderId null. Service-role insert below
-    // still works; the row will have user_id NULL and can be backfilled
-    // later via §1 backfill SQL.
-  }
-  if (!uploaderId) {
     return Response.json(
       { error: 'unauthenticated — sign in to upload' },
       { status: 401 },

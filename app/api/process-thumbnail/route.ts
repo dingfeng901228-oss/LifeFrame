@@ -1,5 +1,6 @@
 import { getR2UploadUrl, type R2Config } from '@/lib/r2';
 import { getSupabaseAdmin } from '@/lib/supabase';
+import { createSupabaseServerClient } from '@/lib/supabase-server';
 import sharp from 'sharp';
 
 export const runtime = 'nodejs';
@@ -90,6 +91,28 @@ export async function POST(req: Request) {
   const key = typeof body.key === 'string' ? body.key : null;
   if (!key) {
     return Response.json({ error: 'missing key' }, { status: 400 });
+  }
+
+  // Frank #7084: thumbnail generation is also admin-only — paired
+  // gate with /api/upload-url. Without this, a non-admin could call
+  // this endpoint with a key to (re)generate thumbnails for arbitrary
+  // photos. server_role bypasses RLS so we MUST check role explicitly.
+  const supabaseServer = await createSupabaseServerClient();
+  const { data: userData, error: userError } =
+    await supabaseServer.auth.getUser();
+  if (userError || !userData.user) {
+    return Response.json(
+      { error: 'unauthenticated — admin required' },
+      { status: 401 },
+    );
+  }
+  const role = (userData.user.app_metadata as { role?: string } | undefined)
+    ?.role;
+  if (role !== 'admin') {
+    return Response.json(
+      { error: 'forbidden — admin role required' },
+      { status: 403 },
+    );
   }
 
   // Derive the thumbnail key from the original. We strip the original
