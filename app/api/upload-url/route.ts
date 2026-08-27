@@ -1,5 +1,6 @@
 import { getR2UploadUrl, type R2Config } from '@/lib/r2';
 import { getSupabaseAdmin } from '@/lib/supabase';
+import { createSupabaseServerClient } from '@/lib/supabase-server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -133,6 +134,31 @@ export async function POST(req: Request) {
       ? body.visibility
       : 'private';
 
+  // Resolve the uploader from the request session. Middleware already
+  // redirects guests from /upload, but we double-check here so this
+  // endpoint can't be used by anon to write photos.user_id = NULL.
+  // §1 of 需求0827: every new photo must be tied to its uploader for
+  // moderation + cascade delete (deferred to §2).
+  let uploaderId: string | null = null;
+  try {
+    const supabaseServer = await createSupabaseServerClient();
+    const { data: userData, error: userError } =
+      await supabaseServer.auth.getUser();
+    if (!userError && userData.user) {
+      uploaderId = userData.user.id;
+    }
+  } catch {
+    // Fall through — leave uploaderId null. Service-role insert below
+    // still works; the row will have user_id NULL and can be backfilled
+    // later via §1 backfill SQL.
+  }
+  if (!uploaderId) {
+    return Response.json(
+      { error: 'unauthenticated — sign in to upload' },
+      { status: 401 },
+    );
+  }
+
   // Insert photo metadata into Supabase (best-effort — don't fail the request).
   // Orphan rows (Supabase row but no R2 object) can happen if client fails PUT;
   // we'll add a status field + cleanup job later if needed.
@@ -151,6 +177,7 @@ export async function POST(req: Request) {
       location_name: typeof exif?.locationName === 'string' && exif.locationName.length > 0 ? exif.locationName.slice(0, 240) : null,
       categories: categories.length > 0 ? categories : [],
       visibility,
+      user_id: uploaderId,
     });
     if (error) {
       console.error('[supabase insert error]', error.message);

@@ -40,6 +40,9 @@ export type PhotoRow = {
   // 'public' is reachable by URL AND emitted into sitemap so search
   // engines can index the /p/[key] page.
   visibility: 'private' | 'unlisted' | 'public';
+  // §1 of 需求0827: uploader (FK auth.users). NULL for legacy rows
+  // before the migration; new uploads always set this from session.
+  user_id: string | null;
 };
 
 export type PhotoInsert = {
@@ -54,4 +57,5 @@ export type PhotoInsert = {
   camera_make?: string | null;
   camera_model?: string | null;
   visibility?: 'private' | 'unlisted' | 'public';
+  user_id?: string | null;
 };
