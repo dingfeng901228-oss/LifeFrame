@@ -41,6 +41,12 @@ export function HomeGallery() {
   const [timeTravelOpen, setTimeTravelOpen] = useState(false);
   const [lifeJourneyOpen, setLifeJourneyOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  // §3 of 需求0827 — like state for the currently-selected photo.
+  const [likeCount, setLikeCount] = useState(0);
+  const [userLiked, setUserLiked] = useState(false);
+  const [likePending, setLikePending] = useState(false);
+  // null = not loaded yet / guest; set after auth.getUser() resolves.
+  const [sessionUserId, setSessionUserId] = useState<string | null>(null);
 
   useEffect(() => {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -94,6 +100,90 @@ export function HomeGallery() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [selected, onThisDayOpen, clusterOpen]);
+
+  // Resolve the current session so the photo detail's ❤ button can
+  // // decide between "show clickable ❤" (signed in) and "show '登录
+  // 后点赞' hint" (guest). §3.4 + §8.1 of 需求0827.
+  useEffect(() => {
+    let mounted = true;
+    // Re-read env inside this effect so we don't depend on the
+    // fetch effect's local-scope url/key (they go out of scope once
+    // that effect's callback returns).
+    const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!envUrl || !envKey) return;
+    try {
+      const supabase = createClient(envUrl, envKey);
+      supabase.auth
+        .getUser()
+        .then(({ data }) => {
+          if (mounted) setSessionUserId(data.user?.id ?? null);
+        })
+        .catch(() => {
+          // Env not configured or fetch failed — treat as guest.
+        });
+    } catch {
+      // Env missing — treat as guest.
+    }
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // Fetch likes for the photo currently open in the detail modal.
+  // Resets to 0/false when the modal closes so a stale count doesn't
+  // leak into the next photo's open.
+  useEffect(() => {
+    if (!selected) {
+      setLikeCount(0);
+      setUserLiked(false);
+      return;
+    }
+    let mounted = true;
+    fetch(`/api/photos/${encodeURIComponent(selected.key)}/likes`)
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data: { count?: number; userLiked?: boolean }) => {
+        if (!mounted) return;
+        setLikeCount(data.count ?? 0);
+        setUserLiked(Boolean(data.userLiked));
+      })
+      .catch(() => {
+        // Silent — count stays at 0, button stays disabled for guests.
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [selected?.key]);
+
+  async function toggleLike() {
+    if (!sessionUserId || likePending || !selected) return;
+    const key = selected.key;
+    setLikePending(true);
+    // Optimistic flip; server response reconciles the authoritative
+    // count so two rapid clicks still end up at the right total.
+    const wasLiked = userLiked;
+    setUserLiked(!wasLiked);
+    setLikeCount((c) => c + (wasLiked ? -1 : 1));
+    try {
+      const res = await fetch(
+        `/api/photos/${encodeURIComponent(key)}/like`,
+        { method: 'POST' },
+      );
+      if (!res.ok) throw new Error(`like toggle ${res.status}`);
+      const data = (await res.json()) as {
+        liked?: boolean;
+        count?: number;
+      };
+      if (typeof data.liked === 'boolean') setUserLiked(data.liked);
+      if (typeof data.count === 'number') setLikeCount(data.count);
+    } catch {
+      // Revert optimistic update on failure.
+      setUserLiked(wasLiked);
+      setLikeCount((c) => c + (wasLiked ? 1 : -1));
+    } finally {
+      setLikePending(false);
+    }
+  }
 
   // §27 second-phase: photo search. Filter photos by query matching
   // filename / location_name / any category. Empty query = no filter.
@@ -346,6 +436,38 @@ export function HomeGallery() {
               {selected.categories && selected.categories.length > 0 && (
                 <p>🏷️ {selected.categories.join(' · ')}</p>
               )}
+
+              {/* §3 of 需求0827 — like button + count. Disabled
+                  until signed in; click toggles via POST
+                  /api/photos/[key]/like with optimistic update +
+                  server reconcile. */}
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={toggleLike}
+                  disabled={!sessionUserId || likePending}
+                  aria-pressed={userLiked}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                    userLiked
+                      ? 'border-rose-400/60 bg-rose-500/20 text-rose-200 hover:bg-rose-500/30'
+                      : 'border-white/20 bg-white/5 text-white/70 hover:border-white/40 hover:text-white'
+                  }`}
+                  title={
+                    sessionUserId
+                      ? userLiked
+                        ? '取消点赞'
+                        : '点赞'
+                      : '登录后点赞'
+                  }
+                >
+                  <span aria-hidden="true">{userLiked ? '❤️' : '🤍'}</span>
+                  <span className="tabular-nums">{likeCount}</span>
+                </button>
+                {!sessionUserId && (
+                  <span className="text-xs text-white/40">登录后点赞</span>
+                )}
+              </div>
+
               <p className="break-all">
                 🔗{' '}
                 <a
