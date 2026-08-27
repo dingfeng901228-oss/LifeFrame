@@ -21,16 +21,25 @@ export async function DELETE(
   }
 
   const supabaseServer = await createSupabaseServerClient();
-  const { data: userData, error: userError } =
-    await supabaseServer.auth.getUser();
-  if (userError || !userData.user) {
+  // Frank #7129 Task #2 deep-dive (option b): getUser() →
+  // getSession(). This DELETE handler was the missed third
+  // instance of the same network-race pattern that
+  // commit c8676ba / Frank #7117 #4 fixed for the like POST,
+  // likes GET, and comments POST routes. getUser() makes a
+  // network round-trip to Supabase to validate the JWT that
+  // races intermittently — even when the session cookie is
+  // valid, getUser() can return null for one render, which
+  // 401s an admin deleting their own comment. getSession()
+  // reads the JWT from cookies locally, no network call.
+  const { data, error } = await supabaseServer.auth.getSession();
+  if (error || !data.session?.user) {
     return Response.json(
       { error: 'unauthenticated' },
       { status: 401 },
     );
   }
-  const userId = userData.user.id;
-  const role = (userData.user.app_metadata as { role?: string } | undefined)
+  const userId = data.session.user.id;
+  const role = (data.session.user.app_metadata as { role?: string } | undefined)
     ?.role;
 
   const supabase = getSupabaseAdmin();

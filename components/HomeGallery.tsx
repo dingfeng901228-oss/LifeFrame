@@ -126,34 +126,44 @@ export function HomeGallery() {
     const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     if (!envUrl || !envKey) return;
-    try {
-      const supabase = createClient(envUrl, envKey);
-      // Frank #7117 #4: getUser() → getSession(). The browser
-      // client's getUser() makes a network round-trip to Supabase
-      // to validate the JWT — same race-prone pattern as the
-      // server-side fix in commit e6109d6 (getViewer). The window
-      // where this resolved to null even though the session JWT
-      // existed in localStorage is what was showing Frank the
-      // '登录后点赞' prompt despite being signed in. AuthButton
-      // works because it ALSO subscribes to onAuthStateChange
-      // (which fires synchronously with the current state); this
-      // gallery effect was a one-shot getUser() with no
-      // subscription, leaving a race window. getSession() reads
-      // the JWT from localStorage locally — no network, no race.
-      supabase.auth
-        .getSession()
-        .then(({ data }) => {
-          if (mounted)
-            setSessionUserId(data.session?.user?.id ?? null);
-        })
-        .catch(() => {
-          // Silent — stay null, treat as guest.
-        });
-    } catch {
-      // Env missing — silent.
-    }
+
+    const supabase = createClient(envUrl, envKey);
+    // Frank #7117 #4: getUser() → getSession(). The browser
+    // client's getUser() makes a network round-trip to Supabase
+    // to validate the JWT — same race-prone pattern as the
+    // server-side fix in commit e6109d6 (getViewer). The window
+    // where this resolved to null even though the session JWT
+    // existed in localStorage is what was showing Frank the
+    // '登录后点赞' prompt despite being signed in. getSession()
+    // reads the JWT from localStorage locally — no network, no race.
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (mounted)
+          setSessionUserId(data.session?.user?.id ?? null);
+      })
+      .catch(() => {
+        // Silent — stay null, treat as guest.
+      });
+
+    // Frank #7129 Task #2 deep-dive: also subscribe to
+    // onAuthStateChange so the sessionUserId state updates LIVE
+    // when the user signs in / out without unmounting HomeGallery.
+    // The one-shot getSession() above only fires on mount — if
+    // the user signs in via a sub-component (or the AuthButton
+    // signOut→relogin flow) while HomeGallery stays mounted, the
+    // sessionUserId state would stay stale. The subscription
+    // fires synchronously with the current state when subscribed
+    // AND on every subsequent auth-state change.
+    const { data: sub } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        if (mounted) setSessionUserId(session?.user?.id ?? null);
+      },
+    );
+
     return () => {
       mounted = false;
+      sub.subscription.unsubscribe();
     };
   }, []);
 
