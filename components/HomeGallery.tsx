@@ -40,6 +40,7 @@ export function HomeGallery() {
   const [clusterPhotos, setClusterPhotos] = useState<PhotoRow[]>([]);
   const [timeTravelOpen, setTimeTravelOpen] = useState(false);
   const [lifeJourneyOpen, setLifeJourneyOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -94,11 +95,29 @@ export function HomeGallery() {
     return () => window.removeEventListener('keydown', onKey);
   }, [selected, onThisDayOpen, clusterOpen]);
 
+  // §27 second-phase: photo search. Filter photos by query matching
+  // filename / location_name / any category. Empty query = no filter.
+  // Scopes the Globe + Timeline + count text. On This Day and Time
+  // Travel still use the full photos list — those are global
+  // features by design (you want your whole life in Time Travel,
+  // not just the search subset).
+  const trimmedQuery = searchQuery.trim().toLowerCase();
+  const filteredPhotos = useMemo(() => {
+    if (!trimmedQuery) return photos;
+    return photos.filter((p) => {
+      if (p.filename?.toLowerCase().includes(trimmedQuery)) return true;
+      if (p.location_name?.toLowerCase().includes(trimmedQuery)) return true;
+      if (p.categories?.some((c) => c.toLowerCase().includes(trimmedQuery)))
+        return true;
+      return false;
+    });
+  }, [photos, trimmedQuery]);
+
   // Photos with GPS coords that also fall inside the selected date window
   // (if any). Empty selection = all photos. This is what drives the
   // globe markers — index-aligned with `markers` for the click handler.
   const visiblePhotos = useMemo(() => {
-    let arr = photos.filter(
+    let arr = filteredPhotos.filter(
       (p): p is PhotoRow & { lat: number; lng: number } =>
         p.lat != null && p.lng != null,
     );
@@ -114,7 +133,7 @@ export function HomeGallery() {
       });
     }
     return arr;
-  }, [photos, selectedDate]);
+  }, [filteredPhotos, selectedDate]);
 
   const markers = useMemo(
     () =>
@@ -194,10 +213,21 @@ export function HomeGallery() {
             ? '加载中…'
             : photos.length === 0
               ? '首页 3D 地球仪 — 上传第一张照片点亮地点'
-              : selectedDate
-                ? `${visibleCount} 张照片在 ${formatMonth(selectedDate)} ± ${TIMELINE_WINDOW_DAYS / 2} 天窗口内`
-                : `${photos.length} 张照片已点亮地点`}
+              : trimmedQuery
+                ? `${visibleCount} 张匹配 "${searchQuery.trim()}" · 共 ${photos.length} 张`
+                : selectedDate
+                  ? `${visibleCount} 张照片在 ${formatMonth(selectedDate)} ± ${TIMELINE_WINDOW_DAYS / 2} 天窗口内`
+                  : `${photos.length} 张照片已点亮地点`}
         </p>
+        {photos.length > 0 && (
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="🔍 搜索照片 (文件名 / 地点 / 分类)..."
+            className="pointer-events-auto mt-3 w-full max-w-sm rounded-full border border-black/15 dark:border-white/15 bg-black/5 dark:bg-white/5 px-4 py-2 text-sm text-black dark:text-white placeholder-black/40 dark:placeholder-white/40 focus:border-black/40 dark:focus:border-white/40 focus:outline-none"
+          />
+        )}
         <div className="pointer-events-auto mt-3 flex flex-wrap items-center justify-center gap-2">
           {onThisDayGrouped.length > 0 && (
             <button
