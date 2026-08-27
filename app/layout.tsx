@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { PWARegistrar } from '@/components/PWARegistrar';
 import { AuthButton } from '@/components/AuthButton';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { AdminLink } from '@/components/AdminLink';
 
 const SITE_URL = 'https://lifeframe.frank2025.com';
 const DESCRIPTION =
@@ -122,6 +123,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             >
               上传
             </Link>
+            <AdminLink />
             <ThemeToggle />
             <AuthButton />
           </nav>

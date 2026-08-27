@@ -43,6 +43,15 @@ export type PhotoRow = {
   // §1 of 需求0827: uploader (FK auth.users). NULL for legacy rows
   // before the migration; new uploads always set this from session.
   user_id: string | null;
+  // From infra/001 (categories), 002 (location_name), 003 (thumbnail).
+  // Categories is a multi-tag subset of {person, scenery}; nullable
+  // here for legacy rows that predate the column. thumbnail_url
+  // points to the 256×256 webp variant; falls back to public_url
+  // when null (caller-side, not in the row).
+  categories: string[] | null;
+  location_name: string | null;
+  thumbnail_key: string | null;
+  thumbnail_url: string | null;
 };
 
 export type PhotoInsert = {

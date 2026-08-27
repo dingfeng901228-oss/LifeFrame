@@ -54,6 +54,7 @@ export async function middleware(request: NextRequest) {
   const wantsUpload = path.startsWith('/upload');
   const wantsLogin = path.startsWith('/login');
   const wantsHome = path === '/';
+  const wantsAdmin = path.startsWith('/admin');
 
   if (!session && wantsHome) {
     // Public landing — guests see the marketing page (which has the
@@ -71,6 +72,25 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(redirect);
   }
 
+  // §2 of 需求0827 — /admin/* is admin-only.
+  // No session → /login. Session but not admin → / (don't 403 +
+  // leak that the path is real; the admin shell's value comes from
+  // not being discoverable to non-admins).
+  if (wantsAdmin) {
+    if (!session) {
+      const redirect = request.nextUrl.clone();
+      redirect.pathname = '/login';
+      redirect.searchParams.set('next', path);
+      return NextResponse.redirect(redirect);
+    }
+    const role = (session.user?.app_metadata as { role?: string } | undefined)?.role;
+    if (role !== 'admin') {
+      const redirect = request.nextUrl.clone();
+      redirect.pathname = '/';
+      return NextResponse.redirect(redirect);
+    }
+  }
+
   if (wantsLogin && session) {
     const redirect = request.nextUrl.clone();
     redirect.pathname = '/';
@@ -82,5 +102,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/', '/upload/:path*', '/login'],
+  matcher: ['/', '/upload/:path*', '/login', '/admin/:path*'],
 };
