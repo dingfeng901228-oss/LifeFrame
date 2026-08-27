@@ -38,17 +38,20 @@ export async function GET(
   }
 
   // Did the current user like it? Resolve session once; guests
-  // short-circuit to false.
+  // short-circuit to false. Frank #7117 #4: getUser() →
+  // getSession() — same race-free pattern as the like POST
+  // route above.
   let userLiked = false;
   try {
     const supabaseServer = await createSupabaseServerClient();
-    const { data: userData } = await supabaseServer.auth.getUser();
-    if (userData.user) {
+    const { data: sessionData } = await supabaseServer.auth.getSession();
+    const sessionUser = sessionData.session?.user;
+    if (sessionUser) {
       const { data: own } = await supabase
         .from('photo_likes')
         .select('id')
         .eq('photo_key', key)
-        .eq('user_id', userData.user.id)
+        .eq('user_id', sessionUser.id)
         .maybeSingle();
       userLiked = Boolean(own);
     }

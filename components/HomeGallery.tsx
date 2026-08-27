@@ -128,16 +128,29 @@ export function HomeGallery() {
     if (!envUrl || !envKey) return;
     try {
       const supabase = createClient(envUrl, envKey);
+      // Frank #7117 #4: getUser() → getSession(). The browser
+      // client's getUser() makes a network round-trip to Supabase
+      // to validate the JWT — same race-prone pattern as the
+      // server-side fix in commit e6109d6 (getViewer). The window
+      // where this resolved to null even though the session JWT
+      // existed in localStorage is what was showing Frank the
+      // '登录后点赞' prompt despite being signed in. AuthButton
+      // works because it ALSO subscribes to onAuthStateChange
+      // (which fires synchronously with the current state); this
+      // gallery effect was a one-shot getUser() with no
+      // subscription, leaving a race window. getSession() reads
+      // the JWT from localStorage locally — no network, no race.
       supabase.auth
-        .getUser()
+        .getSession()
         .then(({ data }) => {
-          if (mounted) setSessionUserId(data.user?.id ?? null);
+          if (mounted)
+            setSessionUserId(data.session?.user?.id ?? null);
         })
         .catch(() => {
-          // Env not configured or fetch failed — treat as guest.
+          // Silent — stay null, treat as guest.
         });
     } catch {
-      // Env missing — treat as guest.
+      // Env missing — silent.
     }
     return () => {
       mounted = false;

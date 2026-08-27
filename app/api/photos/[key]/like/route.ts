@@ -31,15 +31,22 @@ export async function POST(
 
   // Caller must be signed in.
   const supabaseServer = await createSupabaseServerClient();
-  const { data: userData, error: userError } =
-    await supabaseServer.auth.getUser();
-  if (userError || !userData.user) {
+  // Frank #7117 #4: getUser() → getSession(). getUser() makes a
+  // network round-trip to Supabase to validate the JWT that races
+  // intermittently — even when the session cookie is valid,
+  // getUser() can return null for one render, which turned every
+  // signed-in like POST into a 401. Same root cause + fix as
+  // lib/permissions.ts::getViewer (commit e6109d6 / Frank
+  // #7108 #2) and the pattern middleware.ts already uses —
+  // read the JWT from cookies locally, no network call.
+  const { data, error } = await supabaseServer.auth.getSession();
+  if (error || !data.session?.user) {
     return Response.json(
       { error: 'unauthenticated — sign in to like' },
       { status: 401 },
     );
   }
-  const userId = userData.user.id;
+  const userId = data.session.user.id;
 
   const supabase = getSupabaseAdmin();
 

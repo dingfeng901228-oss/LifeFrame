@@ -70,15 +70,23 @@ export async function POST(
 
   // Auth gate. §9.1: 游客不能评论.
   const supabaseServer = await createSupabaseServerClient();
-  const { data: userData, error: userError } =
-    await supabaseServer.auth.getUser();
-  if (userError || !userData.user) {
+  // Frank #7117 #4: getUser() → getSession() — network-race
+  // fix. Same root cause + fix as the like route above and
+  // commit e6109d6 / lib/permissions.ts::getViewer.
+  //
+  // Renamed to sessionData / sessionError so the later
+  // `const { data, error } = await supabase.from('photo_comments')
+  // .insert(...)` doesn't get a "Cannot redeclare block-scoped
+  // variable" error from the TypeScript → swc pipeline.
+  const { data: sessionData, error: sessionError } =
+    await supabaseServer.auth.getSession();
+  if (sessionError || !sessionData.session?.user) {
     return Response.json(
       { error: 'unauthenticated — sign in to comment' },
       { status: 401 },
     );
   }
-  const userId = userData.user.id;
+  const userId = sessionData.session.user.id;
 
   // Parse + validate body.
   let body: { content?: unknown };
