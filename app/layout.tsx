@@ -114,7 +114,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <HomeLogo />
           <nav className="flex items-center gap-6 text-sm text-[var(--text-secondary)]">
             <Link
-              href="/upload"
+              href="/admin/upload"
               className="hover:text-[var(--text-primary)] transition"
             >
               上传
