@@ -1,13 +1,15 @@
 import Link from 'next/link';
-import { getSupabaseAdmin, type PhotoRow } from '@/lib/supabase';
+import { getSupabaseAdmin } from '@/lib/supabase';
+import { AdminPhotosClient } from './AdminPhotosClient';
 
-// §2 of 需求0827 — admin photo management. Grid view with thumbnail
-// + filename + taken_at + location_name + categories + visibility.
+// §2 of 需求0827 — admin photo management. Server Component fetches
+// the full photo set (service_role bypasses RLS so Frank sees every
+// photo regardless of visibility or person-category), then hands off
+// to a Client Component for selection state + bulk-delete UX.
 //
-// Bulk select + bulk delete + secondary-confirm modal are added in
-// follow-up commits (§2.b). For now this is just the read side so
-// Frank can see all his photos in one place regardless of visibility
-// or person-category (admin uses service_role which bypasses RLS).
+// Bulk delete (§2.b.2) lives at /api/admin/photos/delete which itself
+// re-validates admin role — never trust a cookie alone for write
+// paths.
 export const dynamic = 'force-dynamic';
 
 export default async function AdminPhotosPage() {
@@ -40,57 +42,8 @@ export default async function AdminPhotosPage() {
           加载失败：{error.message}
         </p>
       ) : (
-        <>
-          <p className="mb-6 text-sm text-white/40">
-            共 {photos?.length ?? 0} 张照片
-            （按 created_at desc，最多 500 · 批量删除/筛选后续 commit）
-          </p>
-          {photos && photos.length > 0 ? (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-              {photos.map((p) => (
-                <PhotoTile key={p.id} photo={p} />
-              ))}
-            </div>
-          ) : (
-            <p className="text-white/40">还没有照片</p>
-          )}
-        </>
+        <AdminPhotosClient initialPhotos={photos ?? []} />
       )}
     </main>
-  );
-}
-
-function PhotoTile({ photo }: { photo: PhotoRow }) {
-  const cats = photo.categories ?? [];
-  return (
-    <div className="overflow-hidden rounded border border-white/10 bg-black/30">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={photo.thumbnail_url || photo.public_url}
-        alt={photo.filename}
-        className="aspect-square w-full object-cover"
-        loading="lazy"
-      />
-      <div className="p-2 text-xs">
-        <p className="truncate text-white/80" title={photo.filename}>
-          {photo.filename}
-        </p>
-        {photo.taken_at && (
-          <p className="mt-1 text-white/40 tabular-nums">
-            📅 {new Date(photo.taken_at).toLocaleDateString('zh-CN')}
-          </p>
-        )}
-        {photo.location_name && (
-          <p className="truncate text-white/40" title={photo.location_name}>
-            📍 {photo.location_name}
-          </p>
-        )}
-        <p className="mt-1 text-[10px] uppercase tracking-wider text-white/30">
-          {cats.includes('person') && '👤 '}
-          {cats.includes('scenery') && '🏞️ '}
-          · {photo.visibility}
-        </p>
-      </div>
-    </div>
   );
 }
