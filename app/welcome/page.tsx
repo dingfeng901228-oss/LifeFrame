@@ -120,7 +120,14 @@ export default async function WelcomePage() {
           </section>
 
           <section className="mb-16 rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.02] p-10 text-center">
-            <p className="mb-2 text-black/60 dark:text-white/60">准备好开始记录了吗？</p>
+            {/* Frank #7117 #3: dropped the "准备好开始记录了吗？"
+                warm-up line above the CTA pair — Frank felt the
+                phrasing was heavier than the rest of the page
+                warranted (especially compared to the more neutral
+                「邮箱 + 密码注册。或直接...」that now stands as
+                the section's only preamble). The mb-6 spacing
+                on the next <p> covers the gap, so the CTA row
+                below stays vertically aligned. */}
             <p className="mb-6 text-sm text-black/40 dark:text-white/40">
               邮箱 + 密码注册。或直接以游客模式浏览地球仪上的公开风景照。
             </p>
