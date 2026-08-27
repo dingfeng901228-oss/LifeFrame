@@ -5,14 +5,20 @@ import { useRouter } from 'next/navigation';
 import type { PhotoRow } from '@/lib/supabase';
 
 /**
- * Admin photos client: renders the photo grid + handles bulk selection
- * + bulk delete. Bulk delete fires a POST to /api/admin/photos/delete
- * which deletes the DB rows + the R2 objects (original + thumbnail).
+ * Admin photos client: renders the photo grid + bulk-selection
+ * toolbar with mass actions for delete and category changes.
  *
- * After delete, the page calls router.refresh() so the server
- * component re-fetches and the per-route counts (Globe markers,
- * Timeline dots, location badges) all stay in sync without us having
- * to track them manually.
+ * - Bulk delete: POST /api/admin/photos/delete (removes DB rows
+ *   + R2 originals + thumbnails).
+ * - Bulk categories (Frank #7108 #3): POST /api/admin/photos/
+ *   bulk-update with updates.categories = ['person' | 'scenery']
+ *   to REPLACE each selected photo's category array. Whitelist
+ *   enforcement lives server-side in the route handler, not here.
+ *
+ * Both mass actions call router.refresh() after success so the
+ * Server Component re-fetches and route-wide counts (Globe
+ * markers, Timeline dots, location badges) stay in sync without
+ * us having to track them manually.
  */
 type Props = { initialPhotos: PhotoRow[] };
 
@@ -20,6 +26,10 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
   const [photos, setPhotos] = useState<PhotoRow[]>(initialPhotos);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [confirming, setConfirming] = useState(false);
+  // Frank #7108 #3: bulk-update categories modal. Opens from the
+  // sticky action bar; the modal itself lives near the delete
+  // confirm modal so the two mass actions share visual precedent.
+  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -93,6 +103,52 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
     });
   }
 
+  // Frank #7108 #3: bulk-set categories to a single value across
+  // every selected photo. Replaces each photo's categories array
+  // with [target] (not toggle/append) — Frank #7108 phrased this
+  // as "修改为 人物 或者 风景", which is a SET semantic. The route
+  // handler whitelists categories server-side so even if a future
+  // client sends a bogus value it'll be silently dropped.
+  function applyBulkCategory(target: 'person' | 'scenery') {
+    if (selected.size === 0) return;
+    setError(null);
+    startTransition(async () => {
+      try {
+        const res = await fetch('/api/admin/photos/bulk-update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            keys: Array.from(selected),
+            updates: { categories: [target] },
+          }),
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(
+            `批量分类失败 ${res.status}: ${text.slice(0, 160)}`,
+          );
+        }
+        const json = (await res.json()) as { updated?: number };
+        // Patch local state immediately so the per-tile category
+        // badges (👤 / 🏞️) flip on next paint, then refresh the
+        // server component so /stats / /timeline counts are correct.
+        setPhotos((ps) =>
+          ps.map((p) =>
+            selected.has(p.key) ? { ...p, categories: [target] } : p,
+          ),
+        );
+        setSelected(new Set());
+        setCategoryModalOpen(false);
+        router.refresh();
+        if (json.updated === 0) {
+          setError('没找到对应照片，可能已被删除');
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    });
+  }
+
   if (photos.length === 0) {
     return <p className="text-white/40">还没有照片</p>;
   }
@@ -114,14 +170,24 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
           >
             取消选择
           </button>
-          <button
-            type="button"
-            onClick={openConfirm}
-            disabled={pending}
-            className="ml-auto rounded bg-rose-500/90 px-3 py-1 text-xs font-medium text-white transition hover:bg-rose-500 disabled:opacity-50"
-          >
-            🗑️ 删除
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setCategoryModalOpen(true)}
+              disabled={pending}
+              className="rounded border border-amber-400/40 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-200 transition hover:border-amber-300 hover:bg-amber-500/20 disabled:opacity-50"
+            >
+              📁 批量分类
+            </button>
+            <button
+              type="button"
+              onClick={openConfirm}
+              disabled={pending}
+              className="rounded bg-rose-500/90 px-3 py-1 text-xs font-medium text-white transition hover:bg-rose-500 disabled:opacity-50"
+            >
+              🗑️ 删除
+            </button>
+          </div>
         </div>
       )}
 
@@ -199,6 +265,84 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
                 className="rounded bg-rose-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-400 disabled:opacity-50"
               >
                 {pending ? '删除中…' : '确认删除'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Frank #7108 #3: bulk-categories picker modal. Single-step
+          modal (no extra confirmation step) because (a) the user
+          has already actively chosen 人物 / 风景 in the dialog, and
+          (b) the action is reversible in one click — if you misfire
+          and pick 人物 on a batch that should have been 风景, just
+          re-select and pick 风景, no data loss like delete. Server-
+          side route still re-validates admin and strictly whitelists
+          the category values (lib: see route.ts). */}
+      {categoryModalOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6 backdrop-blur-sm"
+          onClick={() => {
+            if (!pending) setCategoryModalOpen(false);
+          }}
+        >
+          <div
+            className="w-full max-w-md rounded-lg border border-amber-500/40 bg-[var(--bg-elevated)] p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-xl font-medium text-white">🔁 批量分类</h3>
+            <p className="mt-3 text-sm text-white/70">
+              将选中的{' '}
+              <strong className="text-amber-300">{selected.size}</strong>{' '}
+              张照片的分类替换为：
+            </p>
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => applyBulkCategory('person')}
+                disabled={pending}
+                className="rounded-lg border border-white/15 bg-white/[0.04] p-4 text-center transition hover:border-cyan-400/60 hover:bg-cyan-400/10 disabled:opacity-50"
+              >
+                <span className="block text-3xl" aria-hidden="true">
+                  👤
+                </span>
+                <span className="mt-2 block text-sm font-medium text-white">
+                  设为人物
+                </span>
+                <span className="mt-1 block text-[10px] uppercase tracking-wider text-white/40">
+                  person
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => applyBulkCategory('scenery')}
+                disabled={pending}
+                className="rounded-lg border border-white/15 bg-white/[0.04] p-4 text-center transition hover:border-emerald-400/60 hover:bg-emerald-400/10 disabled:opacity-50"
+              >
+                <span className="block text-3xl" aria-hidden="true">
+                  🏞️
+                </span>
+                <span className="mt-2 block text-sm font-medium text-white">
+                  设为风景
+                </span>
+                <span className="mt-1 block text-[10px] uppercase tracking-wider text-white/40">
+                  scenery
+                </span>
+              </button>
+            </div>
+            <p className="mt-4 text-xs text-white/40">
+              设为已选中的同一分类时无变化；切换时直接替换（不合并）。
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setCategoryModalOpen(false)}
+                disabled={pending}
+                className="rounded border border-white/15 px-4 py-2 text-sm text-white/80 transition hover:border-white/40 hover:text-white disabled:opacity-50"
+              >
+                取消
               </button>
             </div>
           </div>
