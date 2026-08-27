@@ -26,6 +26,14 @@ type PhotoRow = {
   location_name: string | null;
 };
 
+// §4 of 需求0827 — comment row shape (subset of photo_comments table).
+type CommentRow = {
+  id: string;
+  content: string;
+  created_at: string;
+  user_id: string;
+};
+
 const TIMELINE_WINDOW_DAYS = 60;
 const MS_PER_DAY = 24 * 3600 * 1000;
 
@@ -47,6 +55,12 @@ export function HomeGallery() {
   const [likePending, setLikePending] = useState(false);
   // null = not loaded yet / guest; set after auth.getUser() resolves.
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
+  // §4 of 需求0827 — comments for the currently-selected photo.
+  const [comments, setComments] = useState<CommentRow[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [newCommentText, setNewCommentText] = useState('');
+  const [commentPending, setCommentPending] = useState(false);
+  const [commentError, setCommentError] = useState<string | null>(null);
 
   useEffect(() => {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -154,6 +168,85 @@ export function HomeGallery() {
       mounted = false;
     };
   }, [selected?.key]);
+
+  // Fetch comments for the selected photo (§4). Resets to empty when
+  // modal closes so the next photo's open starts fresh.
+  useEffect(() => {
+    if (!selected) {
+      setComments([]);
+      return;
+    }
+    let mounted = true;
+    setCommentsLoading(true);
+    fetch(`/api/photos/${encodeURIComponent(selected.key)}/comments`)
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data: { comments?: CommentRow[] }) => {
+        if (!mounted) return;
+        setComments(data.comments ?? []);
+      })
+      .catch(() => {
+        // Silent — empty list is the fallback.
+      })
+      .finally(() => {
+        if (mounted) setCommentsLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [selected?.key]);
+
+  async function postComment() {
+    const trimmed = newCommentText.trim();
+    if (
+      !sessionUserId ||
+      commentPending ||
+      !selected ||
+      trimmed.length === 0
+    )
+      return;
+    setCommentPending(true);
+    setCommentError(null);
+    try {
+      const res = await fetch(
+        `/api/photos/${encodeURIComponent(selected.key)}/comments`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: trimmed }),
+        },
+      );
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text.slice(0, 160));
+      }
+      const data = (await res.json()) as { comment?: CommentRow };
+      if (data.comment) {
+        setComments((c) => [...c, data.comment as CommentRow]);
+      }
+      setNewCommentText('');
+    } catch (err) {
+      setCommentError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCommentPending(false);
+    }
+  }
+
+  async function deleteComment(id: string) {
+    if (!sessionUserId || !selected) return;
+    try {
+      const res = await fetch(
+        `/api/photos/${encodeURIComponent(selected.key)}/comments/${encodeURIComponent(id)}`,
+        { method: 'DELETE' },
+      );
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text.slice(0, 160));
+      }
+      setComments((c) => c.filter((x) => x.id !== id));
+    } catch (err) {
+      setCommentError(err instanceof Error ? err.message : String(err));
+    }
+  }
 
   async function toggleLike() {
     if (!sessionUserId || likePending || !selected) return;
@@ -482,6 +575,99 @@ export function HomeGallery() {
               <p className="pt-2 text-xs text-white/30">
                 （分类编辑 + 删除功能下次迭代）
               </p>
+            </div>
+
+            {/* §4 of 需求0827 — comments section. List (server-stored,
+                HTML-escaped at the API → rendered with
+                dangerouslySetInnerHTML so newlines work but no XSS
+                slips through) + per-comment delete for owner/admin +
+                new-comment form (auth-gated, maxLength 500 matching
+                the server cap). */}
+            <div className="mt-6 border-t border-white/10 pt-4">
+              <h4 className="mb-3 text-sm font-medium text-white/80">
+                💬 评论{' '}
+                <span className="text-white/40">({comments.length})</span>
+              </h4>
+
+              <div className="mb-4 space-y-2">
+                {commentsLoading && comments.length === 0 ? (
+                  <p className="text-xs text-white/40">加载中…</p>
+                ) : comments.length === 0 ? (
+                  <p className="text-xs text-white/40">还没有评论</p>
+                ) : (
+                  comments.map((c) => (
+                    <div
+                      key={c.id}
+                      className="rounded border border-white/10 bg-white/[0.02] p-2"
+                    >
+                      <div className="mb-1 flex items-center justify-between text-xs">
+                        <span className="text-white/40">
+                          {c.user_id === sessionUserId
+                            ? '你'
+                            : `user_${c.user_id.slice(0, 4)}`}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-white/30 tabular-nums">
+                            {new Date(c.created_at).toLocaleString(
+                              'zh-CN',
+                            )}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => deleteComment(c.id)}
+                            className="text-rose-300/60 transition hover:text-rose-300"
+                            title="删除"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                      <p
+                        className="whitespace-pre-wrap break-words text-sm text-white/80"
+                        // Server HTML-escapes content in
+                        // /api/photos/[key]/comments POST (infra/007 CHECK
+                        // + sanitizeContent). Stored string is safe to
+                        // render directly.
+                        dangerouslySetInnerHTML={{ __html: c.content }}
+                      />
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {commentError && (
+                <p className="mb-2 rounded border border-rose-500/30 bg-rose-900/20 p-2 text-xs text-rose-300">
+                  {commentError}
+                </p>
+              )}
+
+              {sessionUserId ? (
+                <div className="flex items-end gap-2">
+                  <textarea
+                    value={newCommentText}
+                    onChange={(e) => setNewCommentText(e.target.value)}
+                    rows={2}
+                    maxLength={500}
+                    placeholder="写下你的评论…"
+                    className="flex-1 resize-none rounded border border-white/15 bg-white/5 px-3 py-2 text-sm text-white placeholder-white/40 focus:border-white/40 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={postComment}
+                    disabled={
+                      commentPending ||
+                      newCommentText.trim().length === 0
+                    }
+                    className="rounded bg-white px-3 py-2 text-sm font-medium text-black transition hover:bg-white/90 disabled:opacity-50"
+                  >
+                    {commentPending ? '发布中…' : '发布'}
+                  </button>
+                </div>
+              ) : (
+                <p className="text-xs text-white/40">
+                  登录后可以发表评论。
+                </p>
+              )}
             </div>
           </div>
         </div>
