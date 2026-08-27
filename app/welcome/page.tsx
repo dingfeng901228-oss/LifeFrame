@@ -67,18 +67,36 @@ export default async function WelcomePage() {
   // we additionally filter visibility to public/unlisted so private
   // photos stay hidden from the marketing page (privacy §24: private
   // is owner-only by definition).
-  const supabase = await createSupabaseServerClient();
-  const { data: photos } = await supabase
-    .from('photos')
-    .select(
-      'key, thumbnail_url, public_url, filename, taken_at, location_name, categories, visibility',
-    )
-    .in('visibility', ['public', 'unlisted'])
-    .order('taken_at', { ascending: false })
-    .limit(50);
-  const sceneryPhotos = (photos ?? [])
-    .filter((p) => !(p.categories ?? []).includes('person'))
-    .slice(0, 8);
+  //
+  // The fetch is wrapped in try/catch so `next build` prerender on
+  // Vercel (where Supabase env isn't injected yet) degrades gracefully
+  // to "no scenery section" instead of failing the whole build.
+  // Runtime requests hit the env normally.
+  let sceneryPhotos: Array<{
+    key: string;
+    thumbnail_url: string | null;
+    public_url: string;
+    filename: string;
+    taken_at: string | null;
+    location_name: string | null;
+  }> = [];
+  try {
+    const supabase = await createSupabaseServerClient();
+    const { data: photos } = await supabase
+      .from('photos')
+      .select(
+        'key, thumbnail_url, public_url, filename, taken_at, location_name, categories, visibility',
+      )
+      .in('visibility', ['public', 'unlisted'])
+      .order('taken_at', { ascending: false })
+      .limit(50);
+    sceneryPhotos = (photos ?? [])
+      .filter((p) => !(p.categories ?? []).includes('person'))
+      .slice(0, 8);
+  } catch {
+    // Env not configured (build-time prerender) or transient Supabase
+    // error. Render without the scenery section.
+  }
 
   return (
     <>
