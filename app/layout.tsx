@@ -5,6 +5,7 @@ import { PWARegistrar } from '@/components/PWARegistrar';
 import { AuthButton } from '@/components/AuthButton';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { AdminLink } from '@/components/AdminLink';
+import { HomeLogo } from '@/components/HomeLogo';
 
 const SITE_URL = 'https://lifeframe.frank2025.com';
 const DESCRIPTION =
@@ -110,12 +111,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="min-h-screen antialiased">
         <header className="relative z-10 flex items-center justify-between border-b border-[var(--border-primary)] bg-[var(--bg-primary)] px-6 py-4 text-[var(--text-primary)]">
-          <Link
-            href="/"
-            className="text-lg font-medium tracking-wide hover:text-[var(--accent)] transition"
-          >
-            LifeFrame
-          </Link>
+          <HomeLogo />
           <nav className="flex items-center gap-6 text-sm text-[var(--text-secondary)]">
             <Link
               href="/upload"
