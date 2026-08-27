@@ -1,62 +1,78 @@
 'use client';
 
-import { Suspense, useState, useTransition } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
 
 function LoginInner() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const next = searchParams.get('next') || '/';
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  const [pending, setPending] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // Frank #7108 #5: re-entry guard so a double-click mid-await
+    // doesn't double-fire the auth call or double-push.
+    if (pending) return;
+    setPending(true);
     setError(null);
     setMessage(null);
 
-    startTransition(async () => {
-      try {
-        const supabase = getSupabaseBrowserClient();
-        if (mode === 'signin') {
-          const { error } = await supabase.auth.signInWithPassword({
-            email,
-            password,
-          });
-          if (error) throw error;
-          // Frank #7084: always go home after login. `next` was
-          // producing a circular flow (guest visits /welcome →
-          // /login?next=/welcome → login → /welcome, never reaching
-          // the authed app). Authed users land on / (the app).
+    try {
+      const supabase = getSupabaseBrowserClient();
+      if (mode === 'signin') {
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (error) throw error;
+        // Frank #7084: always go home after login. `next` was
+        // producing a circular flow (guest visits /welcome →
+        // /login?next=/welcome → login → /welcome, never reaching
+        // the authed app). Authed users land on / (the app).
+        //
+        // Frank #7108 #5: push is OUTSIDE any transition wrapper
+        // (no `useTransition`) because router.push inside
+        // startTransition marks its internal state updates as
+        // non-urgent — if React batches them past the next paint
+        // (or the transition gets interrupted), the navigation can
+        // be lost in flight and the user stays on /login. Calling
+        // it synchronously after the await is the safe pattern.
+        router.push('/');
+        router.refresh();
+        // Don't reset pending — the navigation unmounts this
+        // component, so the spinner state is irrelevant.
+      } else {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: `${window.location.origin}/login`,
+          },
+        });
+        if (error) throw error;
+        // If email confirmation is disabled in Supabase, session
+        // is created immediately and we can redirect. Otherwise
+        // prompt user to check mail.
+        if (data.session) {
           router.push('/');
           router.refresh();
         } else {
-          const { data, error } = await supabase.auth.signUp({
-            email,
-            password,
-            options: {
-              emailRedirectTo: `${window.location.origin}/login`,
-            },
-          });
-          if (error) throw error;
-          // If email confirmation is disabled in Supabase, session is created
-          // immediately and we can redirect. Otherwise prompt user to check mail.
-          if (data.session) {
-            router.push('/');
-            router.refresh();
-          } else {
-            setMessage('注册成功！请到邮箱点击确认链接后再登录。');
-          }
+          // Frank #7108 #5: clear pending here too — without it
+          // the button stays "处理中…" forever because no
+          // navigation happens to unmount us.
+          setMessage('注册成功！请到邮箱点击确认链接后再登录。');
+          setPending(false);
         }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
       }
-    });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setPending(false);
+    }
   }
 
   return (
