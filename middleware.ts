@@ -55,7 +55,16 @@ export async function middleware(request: NextRequest) {
   const wantsLogin = path.startsWith('/login');
   const wantsHome = path === '/';
 
-  if (!session && (wantsUpload || wantsHome)) {
+  if (!session && wantsHome) {
+    // Public landing — guests see the marketing page (which has the
+    // login/signup CTA in it). Only /upload and other auth-gated
+    // routes go to /login. This makes / indexable for SEO: Google
+    // crawls /, follows the redirect to /welcome, and indexes the
+    // marketing copy there instead of seeing "blocked by robots.txt".
+    return NextResponse.redirect(new URL('/welcome', request.url));
+  }
+
+  if (!session && wantsUpload) {
     const redirect = request.nextUrl.clone();
     redirect.pathname = '/login';
     redirect.searchParams.set('next', path);
