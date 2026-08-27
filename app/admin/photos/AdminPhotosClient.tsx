@@ -39,6 +39,24 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
   const [categoryTarget, setCategoryTarget] = useState<
     'person' | 'scenery' | null
   >(null);
+
+  // Frank #7117 #2: per-photo edit modal. The 'editingPhoto'
+  // gate drives the conditional rendering — null = no modal;
+  // non-null = open and editing that specific photo. Form fields
+  // are kept as 4 sibling useState calls (one per column) rather
+  // than a single object so each input can bind cleanly to its
+  // own setter and we don't fight stale-closure issues inside
+  // async save transitions.
+  const [editingPhoto, setEditingPhoto] = useState<PhotoRow | null>(
+    null,
+  );
+  const [editTakenAt, setEditTakenAt] = useState<string>('');
+  const [editLocationName, setEditLocationName] = useState<string>('');
+  const [editCategories, setEditCategories] = useState<string[]>([]);
+  const [editVisibility, setEditVisibility] = useState<
+    'public' | 'unlisted' | 'private'
+  >('private');
+  const [editError, setEditError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -162,6 +180,131 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
     });
   }
 
+  // Frank #7117 #2: per-photo edit modal — single-photo
+  // correction surface for taken_at / location_name / categories
+  // / visibility. Distinct from the bulk-categorize modal (Task
+  // #3 / #7115) which only does categories. Saves via the same
+  // /api/admin/photos/bulk-update endpoint (single-element keys
+  // array) — that route's whitelisting already covers all four
+  // fields after the taken_at extension in commit handling Task
+  // #2.
+  function openEdit(photo: PhotoRow) {
+    // Convert ISO timestamp → datetime-local input format
+    // ("YYYY-MM-DDTHH:MM") in the user's local timezone.
+    // datetime-local inputs are wall-clock-aware; the server
+    // route accepts ISO strings via `new Date(taken_at)` so the
+    // roundtrip is symmetrical (server stores ISO, client picks
+    // local-time wall clock).
+    let takenAtLocal = '';
+    if (photo.taken_at) {
+      try {
+        const d = new Date(photo.taken_at);
+        if (!isNaN(d.getTime())) {
+          const pad = (n: number) => String(n).padStart(2, '0');
+          takenAtLocal = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        }
+      } catch {
+        // Leave takenAtLocal empty — admin can re-pick a date.
+      }
+    }
+    setEditingPhoto(photo);
+    setEditTakenAt(takenAtLocal);
+    setEditLocationName(photo.location_name ?? '');
+    setEditCategories([...((photo.categories as string[]) ?? [])]);
+    setEditVisibility(
+      (photo.visibility as 'public' | 'unlisted' | 'private') ?? 'private',
+    );
+    setEditError(null);
+  }
+
+  function cancelEdit() {
+    setEditingPhoto(null);
+    setEditError(null);
+  }
+
+  async function saveEdit() {
+    if (!editingPhoto) return;
+    setEditError(null);
+
+    // Build the same shape the bulk-update route whitelists.
+    // Server-side: categories strictly {person, scenery},
+    // visibility strictly {public, unlisted, private},
+    // location_name string → null on empty, taken_at ISO → null
+    // on empty.
+    const updates: Record<string, unknown> = {};
+    const cats = editCategories.filter(
+      (c): c is 'person' | 'scenery' => c === 'person' || c === 'scenery',
+    );
+    updates.categories = Array.from(new Set(cats));
+    if (['public', 'unlisted', 'private'].includes(editVisibility)) {
+      updates.visibility = editVisibility;
+    }
+    const trimmedLoc = editLocationName.trim().slice(0, 240);
+    updates.location_name = trimmedLoc.length > 0 ? trimmedLoc : null;
+    if (editTakenAt.trim() === '') {
+      updates.taken_at = null;
+    } else {
+      const parsed = new Date(editTakenAt);
+      if (!isNaN(parsed.getTime())) {
+        updates.taken_at = parsed.toISOString();
+      }
+    }
+
+    startTransition(async () => {
+      try {
+        const res = await fetch('/api/admin/photos/bulk-update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            keys: [editingPhoto.key],
+            updates,
+          }),
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(
+            `保存失败 ${res.status}: ${text.slice(0, 160)}`,
+          );
+        }
+        // Patch local state immediately so the per-tile location
+        // name / category badges / date flip without waiting for
+        // router.refresh() to land. Visibility needs the literal
+        // union — `updates` is typed Record<string, unknown> so
+        // direct read widens to `string`, which can't reconcile
+        // with PhotoRow.visibility's narrowed type. Cast to the
+        // literal union here; the bulk-update route already
+        // validates the value server-side.
+        setPhotos((ps) =>
+          ps.map((p) =>
+            p.id === editingPhoto.id
+              ? {
+                  ...p,
+                  taken_at:
+                    updates.taken_at !== undefined
+                      ? (updates.taken_at as string | null)
+                      : p.taken_at,
+                  location_name:
+                    updates.location_name !== undefined
+                      ? (updates.location_name as string | null)
+                      : p.location_name,
+                  categories: updates.categories as string[],
+                  visibility:
+                    (updates.visibility as
+                      | 'public'
+                      | 'unlisted'
+                      | 'private') ?? p.visibility,
+                }
+              : p,
+          ),
+        );
+        setEditingPhoto(null);
+        router.refresh();
+      } catch (err) {
+        setEditError(err instanceof Error ? err.message : String(err));
+      }
+    });
+  }
+
   if (photos.length === 0) {
     return <p className="text-white/40">还没有照片</p>;
   }
@@ -235,6 +378,7 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
             photo={p}
             selected={selected.has(p.key)}
             onToggle={() => toggleOne(p.key)}
+            onEdit={() => openEdit(p)}
           />
         ))}
       </div>
@@ -421,6 +565,165 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
           </div>
         </div>
       )}
+
+      {/* Frank #7117 #2: per-photo edit modal — the "fix this
+          ONE image right now" surface. Single modal-instance,
+          swap in/out via `editingPhoto` gate. Layout: photo meta
+          (key + filename) at top, then a 4-field form (taken_at
+          / location_name / categories / visibility) prefilled
+          from the photo, then 取消 / 保存 actions. Saving calls
+          the same /api/admin/photos/bulk-update endpoint the
+          bulk-categorize modal uses, just with a single-element
+          keys array. */}
+      {editingPhoto && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6 backdrop-blur-sm"
+          onClick={cancelEdit}
+        >
+          <div
+            className="w-full max-w-lg rounded-lg border border-amber-500/40 bg-[var(--bg-elevated)] p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-xl font-medium text-white">✏️ 编辑照片信息</h3>
+            <p className="mt-1 truncate text-xs text-white/40">
+              key: <code className="font-mono">{editingPhoto.key}</code>
+              {editingPhoto.filename && (
+                <>
+                  {' · '}
+                  <span title={editingPhoto.filename}>
+                    {editingPhoto.filename}
+                  </span>
+                </>
+              )}
+            </p>
+            <div className="mt-5 space-y-4">
+              {/* 拍摄时间 */}
+              <label className="block">
+                <span className="block text-xs text-white/60">
+                  📅 拍摄时间
+                </span>
+                <input
+                  type="datetime-local"
+                  value={editTakenAt}
+                  onChange={(e) => setEditTakenAt(e.target.value)}
+                  className="mt-1 block w-full rounded border border-white/15 bg-white/5 px-2 py-1.5 text-sm text-white"
+                />
+                {editTakenAt === '' && (
+                  <span className="mt-1 block text-[10px] text-white/40">
+                    留空保存 = 清除时间
+                  </span>
+                )}
+              </label>
+              {/* 拍摄地点 */}
+              <label className="block">
+                <span className="block text-xs text-white/60">
+                  📍 拍摄地点
+                </span>
+                <input
+                  type="text"
+                  value={editLocationName}
+                  onChange={(e) => setEditLocationName(e.target.value)}
+                  placeholder="留空清除"
+                  maxLength={240}
+                  className="mt-1 block w-full rounded border border-white/15 bg-white/5 px-2 py-1.5 text-sm text-white placeholder-white/30"
+                />
+              </label>
+              {/* 分类 — two-checkbox picker, mirrors the upload
+                  form's batch-level category control style. */}
+              <div>
+                <span className="block text-xs text-white/60">🏷️ 分类</span>
+                <div className="mt-1 flex gap-4">
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={editCategories.includes('person')}
+                      onChange={() => {
+                        setEditCategories((cs) =>
+                          cs.includes('person')
+                            ? cs.filter((c) => c !== 'person')
+                            : [...cs, 'person'],
+                        );
+                      }}
+                      className="h-4 w-4 rounded border-white/30 bg-white/5 accent-cyan-400"
+                    />
+                    <span className="text-sm text-white/80">👤 人物</span>
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={editCategories.includes('scenery')}
+                      onChange={() => {
+                        setEditCategories((cs) =>
+                          cs.includes('scenery')
+                            ? cs.filter((c) => c !== 'scenery')
+                            : [...cs, 'scenery'],
+                        );
+                      }}
+                      className="h-4 w-4 rounded border-white/30 bg-white/5 accent-emerald-400"
+                    />
+                    <span className="text-sm text-white/80">🏞️ 风景</span>
+                  </label>
+                </div>
+              </div>
+              {/* 可见性 — radio group, three options. Default
+                  'private' is the migration 004 default. */}
+              <div>
+                <span className="block text-xs text-white/60">
+                  🔒 可见性
+                </span>
+                <div className="mt-1 flex gap-3 text-sm">
+                  {(['public', 'unlisted', 'private'] as const).map((v) => (
+                    <label
+                      key={v}
+                      className="flex cursor-pointer items-center gap-1.5"
+                    >
+                      <input
+                        type="radio"
+                        name="edit-visibility"
+                        checked={editVisibility === v}
+                        onChange={() => setEditVisibility(v)}
+                        className="h-4 w-4 border-white/30 bg-white/5 accent-amber-400"
+                      />
+                      <span className="text-white/80">
+                        {v === 'public'
+                          ? '🌍 公开'
+                          : v === 'unlisted'
+                            ? '🔗 不公开'
+                            : '🔒 私密'}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+            {editError && (
+              <p className="mt-4 rounded border border-rose-500/30 bg-rose-900/20 p-3 text-sm text-rose-300">
+                {editError}
+              </p>
+            )}
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={cancelEdit}
+                disabled={pending}
+                className="rounded border border-white/15 px-4 py-2 text-sm text-white/80 transition hover:border-white/40 hover:text-white disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={saveEdit}
+                disabled={pending}
+                className="rounded bg-amber-500 px-4 py-2 text-sm font-medium text-black transition hover:bg-amber-400 disabled:opacity-50"
+              >
+                {pending ? '保存中…' : '保存'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -429,10 +732,12 @@ function PhotoTile({
   photo,
   selected,
   onToggle,
+  onEdit,
 }: {
   photo: PhotoRow;
   selected: boolean;
   onToggle: () => void;
+  onEdit: () => void;
 }) {
   const cats = photo.categories ?? [];
   return (
@@ -449,6 +754,25 @@ function PhotoTile({
         onChange={onToggle}
         className="absolute left-2 top-2 z-10 h-5 w-5 cursor-pointer rounded border-white/30 bg-black/60 accent-amber-400"
       />
+      {/* Frank #7117 #2: per-photo edit button — sits in the
+          top-right corner opposite the bulk-select checkbox.
+          preventDefault + stopPropagation so clicking it doesn't
+          also trigger the parent <label>'s selection-toggle
+          behaviour (the label wraps the checkbox + image so a
+          click anywhere on the tile toggles selection — without
+          stopPropagation, clicking ✏️ would also toggle). */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onEdit();
+        }}
+        className="absolute right-2 top-2 z-20 flex h-7 w-7 items-center justify-center rounded bg-black/60 text-base text-white/70 transition hover:bg-black/80 hover:text-white"
+        title="编辑照片信息"
+      >
+        ✏️
+      </button>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={photo.thumbnail_url || photo.public_url}
