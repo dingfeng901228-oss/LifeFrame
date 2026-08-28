@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Globe } from '@/components/Globe';
 import { Timeline } from '@/components/Timeline';
 import { TimeTravel } from '@/components/TimeTravel';
@@ -43,6 +43,23 @@ export function HomeGallery() {
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [selected, setSelected] = useState<PhotoRow | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  // Frank #7187: batch-level cluster context for the photo detail
+  // modal. When the detail modal is opened from a 'same-location
+  // photos' (同地点照片) cluster thumbnail, this holds the rest
+  // of the cluster's photos so prev/next navigation knows what set
+  // to iterate. null = opened from a single marker (not a cluster)
+  // → no prev/next UI shown.
+  const [selectedCluster, setSelectedCluster] = useState<PhotoRow[] | null>(null);
+  // Frank #7187: live swipe offset (px) applied as translateX to the
+  // image container while the user is dragging. Released above the
+  // threshold (>80 px) → goPrev/goNext + snap back; below the
+  // threshold → snap back only. The transform transition uses iOS-
+  // like cubic-bezier for the snap-back so it feels native on both
+  // desktop click and mobile swipe.
+  const [animOffset, setAnimOffset] = useState(0);
+  // Frank #7187: touch start position (clientX). Used as the
+  // reference for deltaX during swipe drag.
+  const touchStartXRef = useRef<number | null>(null as number | null);
   const [onThisDayOpen, setOnThisDayOpen] = useState(false);
   const [clusterOpen, setClusterOpen] = useState(false);
   const [clusterPhotos, setClusterPhotos] = useState<PhotoRow[]>([]);
@@ -409,6 +426,61 @@ export function HomeGallery() {
       .map(([year, yearPhotos]) => ({ year, photos: yearPhotos }));
   }, [photos]);
 
+  // Frank #7187: photo detail modal navigation. When the detail
+  // modal is opened from a cluster thumbnail, prev/next navigate
+  // through the rest of the cluster's photos. When opened from a
+  // single marker (handleMarkerSelect), selectedCluster is null
+  // and the prev/next buttons are hidden. The selectedClusterIndex
+  // derived value -1 means "no cluster context" — the UI treats
+  // that as "don't render prev/next".
+  const selectedClusterIndex = useMemo(() => {
+    if (!selected || !selectedCluster) return -1;
+    return selectedCluster.findIndex((p) => p.key === selected.key);
+  }, [selected, selectedCluster]);
+
+  function goPrev() {
+    if (!selectedCluster) return;
+    const idx = selectedClusterIndex;
+    if (idx <= 0) return;
+    setSelected(selectedCluster[idx - 1]);
+  }
+
+  function goNext() {
+    if (!selectedCluster) return;
+    const idx = selectedClusterIndex;
+    if (idx >= selectedCluster.length - 1) return;
+    setSelected(selectedCluster[idx + 1]);
+  }
+
+  // Frank #7187: mobile swipe handlers on the photo container.
+  // onTouchStart records the start X; onTouchMove updates the live
+  // translateX so the photo follows the finger; onTouchEnd decides
+  // whether to commit (>= 80 px past start) or snap back. The
+  // container's CSS transition handles the snap-back easing.
+  // <HTMLDivElement> generic required: handlers are bound to a
+  // <div> (the swipe container) so TypeScript needs the generic
+  // to match the inferred TouchEventHandler<HTMLDivElement> type.
+  function handleTouchStart(e: React.TouchEvent<HTMLDivElement>) {
+    touchStartXRef.current = e.touches[0].clientX;
+  }
+
+  function handleTouchMove(e: React.TouchEvent<HTMLDivElement>) {
+    if (touchStartXRef.current === null) return;
+    setAnimOffset(e.touches[0].clientX - touchStartXRef.current);
+  }
+
+  function handleTouchEnd(e: React.TouchEvent<HTMLDivElement>) {
+    if (touchStartXRef.current === null) return;
+    const threshold = 80;
+    if (animOffset > threshold) {
+      goPrev();
+    } else if (animOffset < -threshold) {
+      goNext();
+    }
+    setAnimOffset(0);
+    touchStartXRef.current = null;
+  }
+
   return (
     <>
       <div className="absolute inset-0">
@@ -519,12 +591,60 @@ export function HomeGallery() {
             >
               ✕ 关闭 (ESC)
             </button>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
+            {/* Frank #7187: swipe container — wraps the image so touch
+                gestures on the image track deltaX and translate it
+                via translateX. CSS transition uses iOS-like easing
+                (cubic-bezier(0.25, 0.46, 0.45, 0.94)) for the snap-
+                back / commit animation. The prev/next buttons are
+                positioned absolute relative to this wrapper. */}
+            <div
+              className="relative touch-pan-y"
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+              style={{
+                transform: `translateX(${animOffset}px)`,
+                transition:
+                  animOffset === 0
+                    ? 'transform 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94)'
+                    : 'none',
+              }}
+            >
+              {/* Frank #7187: frosted-glass prev button (left side).
+                  Rendered only when a cluster context exists AND
+                  we're not at the first photo in the cluster. */}
+              {selectedCluster &&
+                selectedClusterIndex > 0 && (
+                  <button
+                    type="button"
+                    onClick={goPrev}
+                    className="absolute left-2 top-1/2 z-10 -translate-y-1/2 flex h-12 w-12 items-center justify-center rounded-full border border-white/30 bg-white/20 text-2xl text-white shadow-lg backdrop-blur-md transition hover:bg-white/30"
+                    title="上一张"
+                  >
+                    ‹
+                  </button>
+                )}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={selected.public_url}
               alt={selected.filename}
               className="max-h-[75vh] w-full rounded object-contain"
             />
+              {/* Frank #7187: frosted-glass next button (right side).
+                  Rendered only when a cluster context exists AND
+                  we're not at the last photo in the cluster. */}
+              {selectedCluster &&
+                selectedClusterIndex < selectedCluster.length - 1 && (
+                  <button
+                    type="button"
+                    onClick={goNext}
+                    className="absolute right-2 top-1/2 z-10 -translate-y-1/2 flex h-12 w-12 items-center justify-center rounded-full border border-white/30 bg-white/20 text-2xl text-white shadow-lg backdrop-blur-md transition hover:bg-white/30"
+                    title="下一张"
+                  >
+                    ›
+                  </button>
+                )}
+            </div>
             <div className="mt-4 space-y-1 text-sm text-white/70">
               <p className="text-white">{selected.filename}</p>
               {selected.taken_at && (
@@ -734,6 +854,10 @@ export function HomeGallery() {
                   type="button"
                   onClick={() => {
                     setClusterOpen(false);
+                    // Frank #7187: remember the full cluster so
+                    // the detail modal's prev/next can iterate
+                    // through siblings at the same location.
+                    setSelectedCluster(clusterPhotos);
                     setSelected(p);
                   }}
                   className="aspect-square overflow-hidden rounded border border-white/10 transition hover:border-white/40"
