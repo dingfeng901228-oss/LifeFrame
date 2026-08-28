@@ -57,13 +57,47 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
     'public' | 'unlisted' | 'private'
   >('private');
   const [editError, setEditError] = useState<string | null>(null);
+  // Frank #7131 Task #4: filter chips for categories + visibility.
+  // Client-side filter over the 500-photo limit (no server paging).
+  // Multi-select Sets — empty Set means "no filter on this axis"
+  // (so users can filter on just categories, just visibility,
+  // both, or neither).
+  const [filterCategories, setFilterCategories] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [filterVisibility, setFilterVisibility] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
 
+  // Frank #7131 Task #4: filter photos client-side. A photo matches
+  // if its categories (any) ∈ filterCategories AND its visibility
+  // ∈ filterVisibility. The filter is a pure view transform —
+  // bulk-update / delete still operate on `selected` regardless
+  // of filter (no behavior change for those flows).
+  const filteredPhotos = useMemo(() => {
+    let arr = photos;
+    if (filterCategories.size > 0) {
+      arr = arr.filter((p) =>
+        (p.categories ?? []).some((c) => filterCategories.has(c)),
+      );
+    }
+    if (filterVisibility.size > 0) {
+      arr = arr.filter((p) => filterVisibility.has(p.visibility));
+    }
+    return arr;
+  }, [photos, filterCategories, filterVisibility]);
+
+  // Frank #7131 Task #4: select-all now operates on filteredPhotos
+  // (the visible set) instead of all photos. "全选当前页面"
+  // means "select everything I'm currently looking at".
   const allSelected = useMemo(
-    () => photos.length > 0 && selected.size === photos.length,
-    [photos.length, selected.size],
+    () =>
+      filteredPhotos.length > 0 &&
+      filteredPhotos.every((p) => selected.has(p.key)),
+    [filteredPhotos, selected],
   );
 
   function toggleOne(key: string) {
@@ -77,9 +111,23 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
 
   function toggleAll() {
     setSelected((s) => {
-      // If everything is selected, deselect all. Otherwise select all.
-      if (s.size === photos.length) return new Set();
-      return new Set(photos.map((p) => p.key));
+      // Frank #7131 Task #4: select-all now operates on
+      // filteredPhotos. If every visible photo is already
+      // selected → deselect just those (preserves any selection
+      // outside the current filter window). Otherwise → add
+      // every visible photo to the selection (merges with any
+      // pre-existing selection outside the filter).
+      const allVisibleSelected =
+        filteredPhotos.length > 0 &&
+        filteredPhotos.every((p) => s.has(p.key));
+      if (allVisibleSelected) {
+        const next = new Set(s);
+        for (const p of filteredPhotos) next.delete(p.key);
+        return next;
+      }
+      const next = new Set(s);
+      for (const p of filteredPhotos) next.add(p.key);
+      return next;
     });
   }
 
@@ -347,7 +395,9 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
         </div>
       )}
 
-      {/* Toolbar — count + select-all + filters (filters in §2.c follow-up) */}
+      {/* Toolbar — count + select-all. Frank #7131 Task #4
+          implemented the filter chips right below; the comment
+          here no longer refers to a §2.c follow-up. */}
       <div className="mb-4 flex items-center gap-4 text-sm text-white/40">
         <label className="flex cursor-pointer items-center gap-2">
           <input
@@ -356,11 +406,55 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
             onChange={toggleAll}
             className="h-4 w-4 cursor-pointer rounded border-white/30 bg-white/5 accent-amber-400"
           />
-          <span>全选当前页面（{photos.length}）</span>
+          <span>全选当前页面（{filteredPhotos.length}）</span>
         </label>
         {selected.size > 0 && (
           <span className="text-white/30">
             · 已选 {selected.size}
+          </span>
+        )}
+      </div>
+
+      {/* Frank #7131 Task #4: filter chip row. Two axes
+          (categories + visibility) as multi-select chips; click to
+          toggle inclusion in that axis's filter Set. Empty Set
+          on an axis = "no filter on that axis" — supports filter
+          on just categories, just visibility, both, or neither. */}
+      <div className="mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
+        <FilterGroup
+          label="分类"
+          options={[
+            { value: 'person', label: '👤 人物' },
+            { value: 'scenery', label: '🏞️ 风景' },
+          ]}
+          selected={filterCategories}
+          onChange={setFilterCategories}
+        />
+        <FilterGroup
+          label="可见性"
+          options={[
+            { value: 'public', label: '🌍 公开' },
+            { value: 'unlisted', label: '🔗 不公开' },
+            { value: 'private', label: '🔒 私密' },
+          ]}
+          selected={filterVisibility}
+          onChange={setFilterVisibility}
+        />
+        {(filterCategories.size > 0 || filterVisibility.size > 0) && (
+          <button
+            type="button"
+            onClick={() => {
+              setFilterCategories(new Set());
+              setFilterVisibility(new Set());
+            }}
+            className="text-white/40 underline transition hover:text-white/70"
+          >
+            清空筛选
+          </button>
+        )}
+        {filteredPhotos.length !== photos.length && (
+          <span className="text-white/30">
+            · 匹配 {filteredPhotos.length} / {photos.length}
           </span>
         )}
       </div>
@@ -372,7 +466,7 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
       )}
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-        {photos.map((p) => (
+        {filteredPhotos.map((p) => (
           <PhotoTile
             key={p.id}
             photo={p}
@@ -801,5 +895,52 @@ function PhotoTile({
         </p>
       </div>
     </label>
+  );
+}
+
+// Frank #7131 Task #4: multi-select filter chip group used by the
+// admin/photos toolbar (categories + visibility axes). Each option
+// toggles inclusion in the parent's Set<string> state. Visually:
+// rounded-full pill, amber-tinted when active, white-bordered when
+// inactive. `label` is the axis heading text shown to the left.
+function FilterGroup({
+  label,
+  options,
+  selected,
+  onChange,
+}: {
+  label: string;
+  options: { value: string; label: string }[];
+  selected: Set<string>;
+  onChange: (next: Set<string>) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-white/50">{label}：</span>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map((opt) => {
+          const active = selected.has(opt.value);
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => {
+                const next = new Set(selected);
+                if (active) next.delete(opt.value);
+                else next.add(opt.value);
+                onChange(next);
+              }}
+              className={`rounded-full border px-2.5 py-0.5 transition ${
+                active
+                  ? 'border-amber-400/60 bg-amber-500/20 text-amber-100'
+                  : 'border-white/15 bg-white/[0.04] text-white/60 hover:border-white/40 hover:text-white'
+              }`}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
