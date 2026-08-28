@@ -627,7 +627,48 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
                   </button>
                 </div>
                 <p className="mt-4 text-xs text-white/40">
-                  选定之后会有确认步骤。
+                {/* Frank #7131 #5: visibility picker (optional).
+                    4 options: 🌍 公开 / 🔗 不公开 / 🔒 私密 / —
+                    保持原样 (default — null means don't touch
+                    visibility, only category gets updated). State
+                    persists across the picker→confirm step so the
+                    user can adjust visibility in either step. */}
+                <p className="mt-5 text-xs text-white/40">
+                  可选同时调整可见性：
+                </p>
+                <div className="mt-1 grid grid-cols-4 gap-2">
+                  {(
+                    [
+                      { value: null, label: '保持原样', emoji: '·' },
+                      { value: 'public', label: '公开', emoji: '🌍' },
+                      { value: 'unlisted', label: '不公开', emoji: '🔗' },
+                      { value: 'private', label: '私密', emoji: '🔒' },
+                    ] as const
+                  ).map((opt) => {
+                    const active = visibilityTarget === opt.value;
+                    return (
+                      <button
+                        key={String(opt.value)}
+                        type="button"
+                        onClick={() => setVisibilityTarget(opt.value)}
+                        disabled={pending}
+                        className={`rounded-lg border p-2 text-center transition disabled:opacity-50 ${
+                          active
+                            ? 'border-amber-400/60 bg-amber-500/15 ring-2 ring-amber-400/30'
+                            : 'border-white/15 bg-white/[0.04] hover:border-white/40 hover:bg-white/[0.06]'
+                        }`}
+                      >
+                        <span className="block text-lg" aria-hidden="true">
+                          {opt.emoji}
+                        </span>
+                        <span className="mt-1 block text-[11px] font-medium text-white">
+                          {opt.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                                  选定之后会有确认步骤。
                 </p>
                 <div className="mt-6 flex justify-end gap-2">
                   <button
