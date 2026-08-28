@@ -39,6 +39,15 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
   const [categoryTarget, setCategoryTarget] = useState<
     'person' | 'scenery' | null
   >(null);
+  // Frank #7131 #5: optional visibility target for the bulk-
+  // category modal. null = "保持原样" (don't touch visibility;
+  // only category gets updated on save). Non-null = set each
+  // selected photo's visibility to this value. State persists
+  // across the modal's picker→confirm step so the user can
+  // adjust visibility in either step.
+  const [visibilityTarget, setVisibilityTarget] = useState<
+    'public' | 'unlisted' | 'private' | null
+  >(null);
 
   // Frank #7117 #2: per-photo edit modal. The 'editingPhoto'
   // gate drives the conditional rendering — null = no modal;
@@ -184,17 +193,33 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
   // as "修改为 人物 或者 风景", which is a SET semantic. The route
   // handler whitelists categories server-side so even if a future
   // client sends a bogus value it'll be silently dropped.
-  function applyBulkCategory(target: 'person' | 'scenery') {
+  function applyBulkCategory(
+    target: 'person' | 'scenery',
+    visibility: 'public' | 'unlisted' | 'private' | null,
+  ) {
     if (selected.size === 0) return;
     setError(null);
     startTransition(async () => {
       try {
+        // Frank #7131 #5: include visibility in the updates payload
+        // only when the user picked a non-null target. Null means
+        // "保持原样" — the bulk-update route already whitelists
+        // visibility (private/unlisted/public) so we send only
+        // valid values; passing null = omit the key from updates.
+        const updates: {
+          categories: string[];
+          visibility?: 'public' | 'unlisted' | 'private';
+        } = {
+          categories: [target],
+        };
+        if (visibility) updates.visibility = visibility;
+
         const res = await fetch('/api/admin/photos/bulk-update', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             keys: Array.from(selected),
-            updates: { categories: [target] },
+            updates,
           }),
         });
         if (!res.ok) {
@@ -204,20 +229,27 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
           );
         }
         const json = (await res.json()) as { updated?: number };
-        // Patch local state immediately so the per-tile category
-        // badges (👤 / 🏞️) flip on next paint, then refresh the
-        // server component so /stats / /timeline counts are correct.
+        // Patch local state immediately so per-tile category
+        // badges (👤 / 🏞️) and visibility label flip on next
+        // paint; router.refresh() syncs /stats / /timeline counts.
         setPhotos((ps) =>
           ps.map((p) =>
-            selected.has(p.key) ? { ...p, categories: [target] } : p,
+            selected.has(p.key)
+              ? {
+                  ...p,
+                  categories: [target],
+                  ...(visibility ? { visibility } : {}),
+                }
+              : p,
           ),
         );
         setSelected(new Set());
         setCategoryModalOpen(false);
-        // Frank #7115: clear the confirm-step target so reopening
+        // Frank #7115: clear confirm-step targets so reopening
         // the modal lands back on step 1 (the picker), not on a
-        // stale step 2 with the previous run's target still set.
+        // stale step 2 with previous run's targets still set.
         setCategoryTarget(null);
+        setVisibilityTarget(null);
         router.refresh();
         if (json.updated === 0) {
           setError('没找到对应照片，可能已被删除');
@@ -603,6 +635,7 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
                     onClick={() => {
                       setCategoryModalOpen(false);
                       setCategoryTarget(null);
+                      setVisibilityTarget(null);
                     }}
                     disabled={pending}
                     className="rounded border border-white/15 px-4 py-2 text-sm text-white/80 transition hover:border-white/40 hover:text-white disabled:opacity-50"
@@ -647,7 +680,7 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
                   </button>
                   <button
                     type="button"
-                    onClick={() => applyBulkCategory(categoryTarget)}
+                    onClick={() => applyBulkCategory(categoryTarget, visibilityTarget)}
                     disabled={pending}
                     className="rounded bg-amber-500 px-4 py-2 text-sm font-medium text-black transition hover:bg-amber-400 disabled:opacity-50"
                   >
