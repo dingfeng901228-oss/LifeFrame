@@ -5,7 +5,7 @@ import { Globe } from '@/components/Globe';
 import { Timeline } from '@/components/Timeline';
 import { TimeTravel } from '@/components/TimeTravel';
 import { LifeJourney } from '@/components/LifeJourney';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
 
 type PhotoRow = {
   key: string;
@@ -34,7 +34,11 @@ type CommentRow = {
   user_id: string;
 };
 
-const TIMELINE_WINDOW_DAYS = 60;
+// Frank #7203 #3: ±30 天 → ±15 天. The constant is the total
+// window size; Timeline.tsx halves it for the cyan range overlay
+// (±windowDays/2) and for the matching filter inside the gallery.
+// 60 days = ±30 (old), 30 days = ±15 (new).
+const TIMELINE_WINDOW_DAYS = 30;
 const MS_PER_DAY = 24 * 3600 * 1000;
 
 export function HomeGallery() {
@@ -80,14 +84,29 @@ export function HomeGallery() {
   const [commentError, setCommentError] = useState<string | null>(null);
 
   useEffect(() => {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if (!url || !key) {
-      setFetchError('缺少 NEXT_PUBLIC_SUPABASE_URL 或 NEXT_PUBLIC_SUPABASE_ANON_KEY');
+    // Frank #7203 #4: use the cached browser client (cookie-backed
+    // via @supabase/ssr) instead of constructing a fresh
+    // @supabase/supabase-js client. The login page signs the user
+    // in via getSupabaseBrowserClient(), which writes the session
+    // into Supabase's auth-token cookies. A plain `createClient`
+    // here would use localStorage instead — and because the login
+    // flow never writes to localStorage, that client would always
+    // see getSession() = null → sessionUserId stays null → like /
+    // comment buttons stay disabled even for signed-in users.
+    //
+    // Same client everywhere means cookies are the single source
+    // of truth, and onAuthStateChange below fires for the same
+    // auth events the login flow emits.
+    let supabase: ReturnType<typeof getSupabaseBrowserClient>;
+    try {
+      supabase = getSupabaseBrowserClient();
+    } catch (err) {
+      setFetchError(
+        err instanceof Error ? err.message : String(err),
+      );
       setLoading(false);
       return;
     }
-    const supabase = createClient(url, key);
     let cancelled = false;
     (async () => {
       try {
@@ -137,22 +156,32 @@ export function HomeGallery() {
   // 后点赞' hint" (guest). §3.4 + §8.1 of 需求0827.
   useEffect(() => {
     let mounted = true;
-    // Re-read env inside this effect so we don't depend on the
-    // fetch effect's local-scope url/key (they go out of scope once
-    // that effect's callback returns).
-    const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if (!envUrl || !envKey) return;
-
-    const supabase = createClient(envUrl, envKey);
-    // Frank #7117 #4: getUser() → getSession(). The browser
-    // client's getUser() makes a network round-trip to Supabase
-    // to validate the JWT — same race-prone pattern as the
-    // server-side fix in commit e6109d6 (getViewer). The window
-    // where this resolved to null even though the session JWT
-    // existed in localStorage is what was showing Frank the
-    // '登录后点赞' prompt despite being signed in. getSession()
-    // reads the JWT from localStorage locally — no network, no race.
+    // Frank #7203 #4: getSupabaseBrowserClient() (cookie-backed
+    // @supabase/ssr) instead of a fresh createClient() (localStorage
+    // @supabase/supabase-js). The login page uses the same cached
+    // client, so the session JWT written into cookies at sign-in is
+    // visible here on the very next render. The previous
+    // createClient() always read null because localStorage was
+    // empty (login never wrote to it).
+    let supabase: ReturnType<typeof getSupabaseBrowserClient>;
+    try {
+      supabase = getSupabaseBrowserClient();
+    } catch {
+      // No env / env misconfigured — treat as guest, sessionUserId
+      // stays null. No need to surface a separate error here; the
+      // photos fetch effect already reports env issues.
+      return;
+    }
+    // Frank #7117 #4: getUser() → getSession(). Reads the JWT from
+    // cookies locally — no network round-trip, no race where
+    // getUser() briefly returns null right after sign-in.
+    //
+    // Frank #7129 Task #2: also subscribe to onAuthStateChange so
+    // the sessionUserId state updates LIVE when the user signs in /
+    // out without unmounting HomeGallery. The one-shot getSession()
+    // above only fires on mount; the subscription fires
+    // synchronously with the current state when subscribed AND on
+    // every subsequent auth-state change.
     supabase.auth
       .getSession()
       .then(({ data }) => {
@@ -163,15 +192,6 @@ export function HomeGallery() {
         // Silent — stay null, treat as guest.
       });
 
-    // Frank #7129 Task #2 deep-dive: also subscribe to
-    // onAuthStateChange so the sessionUserId state updates LIVE
-    // when the user signs in / out without unmounting HomeGallery.
-    // The one-shot getSession() above only fires on mount — if
-    // the user signs in via a sub-component (or the AuthButton
-    // signOut→relogin flow) while HomeGallery stays mounted, the
-    // sessionUserId state would stay stale. The subscription
-    // fires synchronously with the current state when subscribed
-    // AND on every subsequent auth-state change.
     const { data: sub } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         if (mounted) setSessionUserId(session?.user?.id ?? null);

@@ -57,7 +57,17 @@ export function UploadForm() {
   // photo's EXIF takenAt during upload. Empty string = fall back to
   // per-photo EXIF. The picker UI in the JSX below pre-fills from
   // the first photo's EXIF so users usually don't have to do anything.
-  const [takenAtManual, setTakenAtManual] = useState<string>('');
+  // Frank #7203 #1: the batch-level time picker now defaults to
+  // the current local time (`nowAsDateTimeLocal()`) instead of
+  // waiting for EXIF to prefill it. Reason: Frank wants the
+  // upload form's default state to feel "right now, ready to go"
+  // — user picks files, the picker already shows a sensible
+  // timestamp, and the dropdown is there to override per-batch
+  // (e.g. for old photos). The user can still hit "✕ 清除" to
+  // fall back to per-photo EXIF time.
+  const [takenAtManual, setTakenAtManual] = useState<string>(() =>
+    nowAsDateTimeLocal(),
+  );
   const inputRef = useRef<HTMLInputElement>(null);
   // Frank #7108 #1: cancel flag — set true by the "取消上传" button
   // mid-upload, checked by the chunked loop in doUpload() to stop
@@ -109,25 +119,35 @@ export function UploadForm() {
     }));
     setQueue(items);
     setBatchStatus('ready');
-    // Pre-fill the batch-level time picker from the first photo's EXIF.
-    // If EXIF has no taken_at we leave the picker empty (the
-    // upload still uses each photo's EXIF as a fallback below).
-    setTakenAtManual('');
+    // Frank #7203 #1: refresh the batch-level time picker to the
+    // current local time on every file pick. We don't preserve a
+    // previous batch's manual time — picking new files means a new
+    // batch with a new "now" anchor. The user can override by
+    // editing the datetime-local dropdown (or clear to fall back
+    // to per-photo EXIF, which the uploadOne path uses as the
+    // `takenAtManual === ''` fallback).
+    setTakenAtManual(nowAsDateTimeLocal());
 
     // Read EXIF for all files in parallel (fast — header-only reads).
     // We mutate `items` in place via index and re-publish the queue
     // after each item flips to 'ready' so the UI updates incrementally.
+    //
+    // Frank #7203 #1: the EXIF prefill of the top-level picker is
+    // GONE. Previously this loop called `setTakenAtManual((prev) =>
+    // (prev ? prev : iso))` to overlay EXIF time onto the empty
+    // initial state. That made sense when the initial state was
+    // '', but now the picker always carries a "now" anchor — and
+    // EXIF time (which can be from years ago) clobbering that
+    // anchor would silently hide the user's override. We still
+    // record EXIF on each item so the uploadOne fallback path
+    // (when the user clears the picker) keeps working.
     await Promise.all(
       items.map(async (_, i) => {
         try {
           const exifData = await extractExif(items[i].file);
           items[i].exif = exifData;
           if (exifData.takenAt) {
-            const iso = exifData.takenAt.slice(0, 16);
-            items[i].takenAtManual = iso;
-            // Prefill the top-level picker only if the user hasn't
-            // already picked something for the previous batch.
-            setTakenAtManual((prev) => (prev ? prev : iso));
+            items[i].takenAtManual = exifData.takenAt.slice(0, 16);
           }
         } catch {
           // No EXIF — that's fine, file will just upload without GPS/time.
@@ -230,6 +250,14 @@ export function UploadForm() {
           },
           categories:
             batchCategories.length > 0 ? batchCategories : undefined,
+          // Frank #7203 #2: the upload form's useEffect flips
+          // visibility to 'unlisted' whenever the 'person' category
+          // is toggled on, but uploadOne was never sending the
+          // value to the API — so the route defaulted to 'private'
+          // and every person photo ended up invisible (private
+          // 404s on /p/[key]). Pass it through so the server-side
+          // default matches the client-side intent.
+          visibility: batchVisibility,
         }),
       });
       if (!signRes.ok) {
@@ -745,4 +773,20 @@ export function UploadForm() {
 function formatShortDateTime(iso: string): string {
   // iso like "2026-08-26T18:54" — render as "2026.08.26 18:54"
   return iso.replace(/-/g, '.').replace('T', ' ');
+}
+
+// Frank #7203 #1: format `new Date()` as the local-time string
+// that <input type="datetime-local"> expects ("YYYY-MM-DDTHH:MM").
+// Using toISOString().slice(0, 16) would give UTC, which the
+// datetime-local input then re-interprets as local — silently
+// shifting the visible time by the user's UTC offset. Use local
+// getters directly so the picker shows what `new Date()` actually
+// is in the user's timezone.
+function nowAsDateTimeLocal(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+    `T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  );
 }

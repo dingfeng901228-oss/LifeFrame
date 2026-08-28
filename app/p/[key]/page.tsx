@@ -1,5 +1,6 @@
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
+import { createSupabaseServerClient } from '@/lib/supabase-server';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
@@ -61,10 +62,31 @@ export default async function PublicPhotoPage({
     .maybeSingle();
 
   // 404 for missing OR private. private photos are owner-only and
-  // must not leak via direct URL. unlisted + public are both shown;
-  // the only difference is whether they show up in sitemap.
+  // must not leak via direct URL.
   if (!photo || photo.visibility === 'private') {
     notFound();
+  }
+
+  // Frank #7203 #2: 'unlisted' is "不公开" — non-logged-in users
+  // cannot see. Distinct from 'private' (owner-only): any signed-in
+  // user can still open the direct URL, just not anonymous
+  // visitors. Redirect guests to /login with a `next=` so they
+  // bounce back to this same photo after signing in.
+  //
+  // We resolve the session via the cookie-bound server client (NOT
+  // the anon client used for the photo fetch above) so the check
+  // matches the same auth boundary as middleware + the like/comment
+  // POST routes. getSession() reads the JWT locally — no network
+  // round-trip, no race that turned previous getUser() attempts
+  // into spurious nulls (Frank #7117 #4).
+  if (photo.visibility === 'unlisted') {
+    const supabaseServer = await createSupabaseServerClient();
+    const { data: sessionData } = await supabaseServer.auth.getSession();
+    if (!sessionData.session?.user) {
+      redirect(
+        `/login?next=${encodeURIComponent(`/p/${encodeURIComponent(key)}`)}`,
+      );
+    }
   }
 
   const takenAt = photo.taken_at
