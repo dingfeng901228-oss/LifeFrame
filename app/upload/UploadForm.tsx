@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { extractExif, type PhotoExif } from '@/lib/exif';
 import { MapPicker, type PickedLocation } from '@/components/MapPicker';
 
@@ -41,6 +41,16 @@ export function UploadForm() {
   const [picked, setPicked] = useState<PickedLocation | null>(null);
   const [mapOpen, setMapOpen] = useState(false);
   const [categories, setCategories] = useState<string[]>([]);
+  // Frank #7131 #6: batch-level visibility. Defaults to 'private'
+  // (matches the migration 004 default server-side). The useEffect
+  // below auto-resets to a category-based default when the user
+  // picks a category (person → unlisted, scenery → public) so the
+  // default matches Frank's spec without forcing a manual visibility
+  // radio on every photo. User can override per-photo via the per-
+  // photo edit modal (Frank #7117 #2) after upload.
+  const [visibility, setVisibility] = useState<
+    'public' | 'unlisted' | 'private'
+  >('private');
   const [locating, setLocating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Batch-level manual time override. When set, this wins over each
@@ -55,6 +65,24 @@ export function UploadForm() {
   // abort network requests without AbortController; aborting would
   // require threading AbortSignal through every fetch + the PUT).
   const cancelRef = useRef(false);
+
+  // Frank #7131 #6: default visibility per category. Person photos
+  // → unlisted (privacy-first for personal content); scenery photos
+  // → public (open-by-default for landscapes). Empty categories →
+  // leave current visibility alone (don't clobber the user's manual
+  // selection if they cleared categories without changing visibility).
+  // Note this effect auto-resets visibility on every category
+  // change — if the user picks a category then later wants to
+  // change visibility, they'd need to re-toggle the category or
+  // can override per-photo via the edit modal post-upload. Fine
+  // for now; can add an explicit override UI in a follow-up.
+  useEffect(() => {
+    if (categories.includes('person')) {
+      setVisibility('unlisted');
+    } else if (categories.includes('scenery')) {
+      setVisibility('public');
+    }
+  }, [categories]);
 
   async function onChange(e: React.ChangeEvent<HTMLInputElement>) {
     setError(null);
@@ -168,6 +196,7 @@ export function UploadForm() {
     batchPicked: PickedLocation | null,
     batchCategories: string[],
     batchTakenAtManual: string,
+    batchVisibility: 'public' | 'unlisted' | 'private',
   ): Promise<void> {
     setQueue((q) =>
       q.map((it) =>
@@ -294,7 +323,7 @@ export function UploadForm() {
       if (cancelRef.current) break;
       const chunk = eligible.slice(i, i + MAX_CONCURRENCY);
       const settled = await Promise.allSettled(
-        chunk.map((item) => uploadOne(item, picked, categories, takenAtManual)),
+        chunk.map((item) => uploadOne(item, picked, categories, takenAtManual, visibility)),
       );
       results.push(...settled);
     }
@@ -316,6 +345,13 @@ export function UploadForm() {
     setQueue([]);
     setPicked(null);
     setCategories([]);
+    // Frank #7131 #6: reset visibility to 'private' default along
+    // with the other batch-level state so the next batch starts
+    // from a clean slate. Without this, visibility persists across
+    // resets and the user's next batch would silently inherit the
+    // previous batch's visibility choice (especially confusing if
+    // the last upload was 'unlisted' from a person photo).
+    setVisibility('private');
     setTakenAtManual('');
     setError(null);
     cancelRef.current = false;
