@@ -1,6 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { photoImageUrl } from '@/lib/photo-url';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
@@ -119,7 +120,11 @@ export default async function PublicPhotoPage({
         <div className="overflow-hidden rounded-lg bg-black/[0.02] dark:bg-white/[0.02]">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={photo.thumbnail_url || photo.public_url}
+            // Frank #7243 Task 2: image served through the auth-
+            // gated proxy. The page is for /p/[key] sharing — use
+            // the full-size original (not the 256 thumbnail) so
+            // visitors actually see the photo they're linking to.
+            src={photoImageUrl(photo)}
             alt={photo.filename}
             className="w-full object-contain"
           />

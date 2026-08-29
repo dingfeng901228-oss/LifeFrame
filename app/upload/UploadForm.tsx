@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { extractExif, type PhotoExif } from '@/lib/exif';
+import { stripExifFromFile, type StripMode } from '@/lib/exif-strip';
 import { MapPicker, type PickedLocation } from '@/components/MapPicker';
 
 const MAX_BATCH = 30;
@@ -51,6 +52,15 @@ export function UploadForm() {
   const [visibility, setVisibility] = useState<
     'public' | 'unlisted' | 'private'
   >('private');
+  // Frank #7243 Task 3: per-batch opt-in to keep the original
+  // file's EXIF GPS. Default false → strip GPS client-side via
+  // lib/exif-strip before PUT so the file that lands in R2 has
+  // no embedded coordinates (even if lat/lng in the Supabase
+  // row still drive the globe). User can override per-batch
+  // (e.g. for documentation where they want the original to
+  // retain its provenance). Reset on every batch via reset()
+  // / reSelect() below.
+  const [keepExifGps, setKeepExifGps] = useState(false);
   const [locating, setLocating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Batch-level manual time override. When set, this wins over each
@@ -217,6 +227,7 @@ export function UploadForm() {
     batchCategories: string[],
     batchTakenAtManual: string,
     batchVisibility: 'public' | 'unlisted' | 'private',
+    batchKeepExifGps: boolean,
   ): Promise<void> {
     setQueue((q) =>
       q.map((it) =>
@@ -270,9 +281,20 @@ export function UploadForm() {
         publicUrl: string;
       };
 
+      // Frank #7243 Task 3: strip GPS from the original JPEG
+      // before PUT unless the user explicitly opted in to keep
+      // it. The lat/lng read into the Supabase row above is
+      // already what we extracted BEFORE stripping, so the
+      // globe location is preserved visually — only the file's
+      // embedded EXIF coordinates are removed. stripExifFromFile
+      // returns the original on failure (logged in lib/exif-
+      // strip.ts) so a bad JPEG doesn't fail the batch.
+      const uploadFile: File = batchKeepExifGps
+        ? item.file
+        : await stripExifFromFile(item.file, 'gps');
       const put = await fetch(url, {
         method: 'PUT',
-        body: item.file,
+        body: uploadFile,
       });
       if (!put.ok) {
         const text = await put.text();
@@ -351,7 +373,16 @@ export function UploadForm() {
       if (cancelRef.current) break;
       const chunk = eligible.slice(i, i + MAX_CONCURRENCY);
       const settled = await Promise.allSettled(
-        chunk.map((item) => uploadOne(item, picked, categories, takenAtManual, visibility)),
+        chunk.map((item) =>
+          uploadOne(
+            item,
+            picked,
+            categories,
+            takenAtManual,
+            visibility,
+            keepExifGps,
+          ),
+        ),
       );
       results.push(...settled);
     }
@@ -380,6 +411,11 @@ export function UploadForm() {
     // previous batch's visibility choice (especially confusing if
     // the last upload was 'unlisted' from a person photo).
     setVisibility('private');
+    // Frank #7243 Task 3: reset the EXIF-GPS opt-in too, so a
+    // new batch doesn't silently inherit the previous batch's
+    // privacy choice (the default IS keep-stripped, but better
+    // to reset explicitly for parity with visibility / time).
+    setKeepExifGps(false);
     setTakenAtManual('');
     setError(null);
     cancelRef.current = false;
@@ -613,6 +649,34 @@ export function UploadForm() {
               <span className="text-white/80">🏞️ 风景</span>
             </label>
           </div>
+        </div>
+      )}
+
+      {/* Frank #7243 Task 3: per-batch privacy option to keep
+          the uploaded file's embedded EXIF GPS. Default unchecked
+          → strip GPS client-side via lib/exif-strip so the file
+          that lands in R2 has no location data. Lat/lng in
+          Supabase still drive the globe based on what the browser
+          extracted BEFORE stripping (so the visual location is
+          preserved). The label is explicit about what's at risk
+          so the user knows what they're opting into. */}
+      {showPickers && (
+        <div className="rounded-lg border border-white/10 bg-white/[0.02] p-4 text-sm">
+          <p className="mb-2 text-white/50">隐私选项</p>
+          <label className="flex cursor-pointer items-start gap-2">
+            <input
+              type="checkbox"
+              checked={keepExifGps}
+              onChange={(e) => setKeepExifGps(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-white/30 bg-white/5 accent-cyan-400"
+            />
+            <span className="text-white/80">
+              保留原图 EXIF GPS 坐标{' '}
+              <span className="text-white/40">
+                （默认关闭 — 文件上传时会移除 GPS；勾选后原图的拍摄坐标会随文件发布）
+              </span>
+            </span>
+          </label>
         </div>
       )}
 

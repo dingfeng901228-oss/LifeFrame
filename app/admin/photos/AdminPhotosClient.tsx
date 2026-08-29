@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import type { PhotoRow } from '@/lib/supabase';
+import { photoImageUrl } from '@/lib/photo-url';
 
 /**
  * Admin photos client: renders the photo grid + bulk-selection
@@ -943,7 +944,12 @@ function PhotoTile({
       </button>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={photo.thumbnail_url || photo.public_url}
+        // Frank #7243 Task 2: admin grid tiles use the 256
+        // thumbnail via the auth proxy. Admin sees all photos
+        // (private / unlisted / public) so this is the proxy's
+        // primary auth check landing — every tile fetch hits
+        // /api/photos/[key]/image?w=256 with admin cookies.
+        src={photoImageUrl(photo, '256')}
         alt={photo.filename}
         className="aspect-square w-full object-cover"
         loading="lazy"

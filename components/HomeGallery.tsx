@@ -6,6 +6,7 @@ import { Timeline } from '@/components/Timeline';
 import { TimeTravel } from '@/components/TimeTravel';
 import { LifeJourney } from '@/components/LifeJourney';
 import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
+import { photoImageUrl } from '@/lib/photo-url';
 
 type PhotoRow = {
   key: string;
@@ -885,7 +886,11 @@ export function HomeGallery() {
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={p.thumbnail_url || p.public_url}
+                    // Frank #7243 Task 2: cluster thumbnails via
+                    // the auth-gated proxy in 256 size — the grid
+                    // renders dozens of thumbs so full-size
+                    // originals would hammer R2.
+                    src={photoImageUrl(p, '256')}
                     alt={p.filename}
                     className="h-full w-full object-cover"
                     loading="lazy"
@@ -942,7 +947,10 @@ export function HomeGallery() {
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={p.thumbnail_url || p.public_url}
+                        // Frank #7243 Task 2: on-this-day grid uses
+                        // the 256 thumbnail via the auth proxy —
+                        // same pattern as the cluster grid.
+                        src={photoImageUrl(p, '256')}
                         alt={p.filename}
                         className="h-full w-full object-cover"
                         loading="lazy"
