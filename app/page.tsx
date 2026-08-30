@@ -208,7 +208,7 @@ export default function Home() {
               产品介绍
             </Link>
             <a
-              href="mailto:frank@example.com"
+              href="mailto:dingfeng901112@gmail.com"
               className="transition hover:text-black/70 dark:hover:text-white/70"
             >
               联系开发者
