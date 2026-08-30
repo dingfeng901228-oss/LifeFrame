@@ -937,7 +937,13 @@ function PhotoTile({
           e.stopPropagation();
           onEdit();
         }}
-        className="absolute right-2 top-2 z-20 flex h-7 w-7 items-center justify-center rounded bg-black/60 text-base text-white/70 transition hover:bg-black/80 hover:text-white"
+        // Frank #7243 Task 8 (B4) a11y: icon-only edit button gets
+        // an explicit aria-label so screen readers announce
+        // "编辑照片信息" instead of just "pencil emoji". title
+        // attribute stays for mouse hover preview; aria-label is
+        // the canonical accessible name.
+        aria-label="编辑照片信息"
+        className="absolute right-2 top-2 z-20 flex h-7 w-7 items-center justify-center rounded bg-black/60 text-base text-white/70 transition hover:bg-black/80 hover:text-white focus-visible:ring-2 focus-visible:ring-cyan-400"
         title="编辑照片信息"
       >
         ✏️

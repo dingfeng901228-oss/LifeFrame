@@ -320,6 +320,15 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
           height={svgHeight}
           viewBox={`${-svgWidth / 2} ${-svgHeight / 2} ${svgWidth} ${svgHeight}`}
           style={{ display: 'block', overflow: 'visible' }}
+          // Frank #7243 Task 8 (B4): treat the globe as decorative.
+          // It's a backdrop for the photo markers (which have their
+          // own button roles + aria-labels), not an interactive
+          // element in itself. Without aria-hidden, a screen reader
+          // would try to announce 200+ countries as `<title>`-less
+          // `<path>` children. focusable="false" prevents IE/legacy
+          // browsers from tabbing into the SVG.
+          aria-hidden="true"
+          focusable="false"
         >
           <defs>
             <radialGradient id="oceanGrad" cx="38%" cy="35%" r="75%">

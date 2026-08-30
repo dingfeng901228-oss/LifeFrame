@@ -177,7 +177,7 @@ export function Timeline({
       {/* Compact header — just the date range. No instructions, no
           "筛选：..." copy. The interaction is self-evident once you
           touch the bar. */}
-      <div className="mb-1.5 flex items-center justify-between text-[10px] tracking-wider text-black/40 dark:text-white/40 tabular-nums">
+      <div className="mb-1.5 flex items-center justify-between text-[10px] tracking-wider text-black/60 dark:text-white/55 tabular-nums">
         <span>{formatShort(minDate)}</span>
         {selectedDate && (
           <span className="text-cyan-600 dark:text-cyan-300/80">
@@ -226,6 +226,23 @@ export function Timeline({
         <div
           ref={trackRef}
           onPointerDown={handlePointerDown}
+          // Frank #7243 Task 8 (B4): a11y for the timeline track.
+          // Treats it as a slider — keyboard users can still scrub by
+          // pointer (the SVG isn't focusable; mouse-only on desktop).
+          // aria-valuetext carries the human-readable date so screen
+          // readers announce "2026.03" instead of a raw ms epoch.
+          // The photo keyframe marks stay aria-hidden via their
+          // pointer-events-none parent — they're visual chapter
+          // ticks, not interactive elements.
+          role="slider"
+          aria-label="时间轴 — 点击或拖动选择日期"
+          aria-valuemin={minDate.getTime()}
+          aria-valuemax={maxDate.getTime()}
+          aria-valuenow={selectedDate ? selectedDate.getTime() : minDate.getTime()}
+          aria-valuetext={
+            selectedDate ? formatShort(selectedDate) : '未选择'
+          }
+          tabIndex={0}
           className={`relative h-1.5 touch-none select-none rounded-full bg-black/10 dark:bg-white/10 transition ${
             dragging
               ? 'cursor-grabbing bg-black/15 dark:bg-white/15'
