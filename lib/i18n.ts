@@ -155,6 +155,40 @@ const dict: Dict = {
     zh: '选择语言',
     ja: '言語を選択',
   },
+
+  // ─── Auth button + profile menu (Frank #7323) ───────────────
+  'auth.login': {
+    zh: '登录',
+    ja: 'ログイン',
+  },
+  'auth.userMenu': {
+    zh: '用户菜单',
+    ja: 'ユーザーメニュー',
+  },
+  'auth.userId': {
+    zh: '用户 ID',
+    ja: 'ユーザー ID',
+  },
+  'auth.copy': {
+    zh: '复制',
+    ja: 'コピー',
+  },
+  'auth.copied': {
+    zh: '已复制',
+    ja: 'コピー済み',
+  },
+  'auth.registrationDate': {
+    zh: '注册日期',
+    ja: '登録日',
+  },
+  'auth.signOut': {
+    zh: '登出',
+    ja: 'サインアウト',
+  },
+  'auth.signingOut': {
+    zh: '退出中…',
+    ja: 'サインアウト中…',
+  },
 };
 
 export function t(
