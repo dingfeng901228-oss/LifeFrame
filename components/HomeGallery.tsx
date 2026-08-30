@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { Globe } from '@/components/Globe';
 import { Timeline } from '@/components/Timeline';
 import { TimeTravel } from '@/components/TimeTravel';
@@ -504,6 +505,98 @@ export function HomeGallery() {
 
   return (
     <>
+      {/* Frank #7243 Task 4 mobile layout — sibling to the desktop
+          wrapper below. Flex column so the hero (H1 + subtitle +
+          2 CTAs) sits above the 40vh globe on 375/390/430 px
+          viewports per doc Task 4 acceptance criteria. Hidden on
+          desktop because the absolute-overlay layout below takes
+          over. */}
+      <div className="flex h-full w-full flex-col overflow-hidden lg:hidden">
+        {/* Hero — title + subtitle + primary/secondary CTA. Doc
+            Task 4 specifies ONE primary + ONE secondary (not
+            three equal-weight actions). min-h-[44px] = the 44x44
+            px touch-target requirement from doc Task 4. */}
+        <div className="flex-shrink-0 px-4 pt-3 pb-2 text-center">
+          <h1 className="text-xl font-light leading-tight text-black dark:text-white sm:text-2xl">
+            用照片，留下生活的痕迹
+          </h1>
+          <p className="mx-auto mt-1.5 max-w-xs text-xs text-black/70 dark:text-white/70 sm:text-sm">
+            自动按拍摄时间与地点，整理成可探索的人生地图
+          </p>
+          <div className="mt-3 flex flex-col items-stretch gap-2 px-2 sm:flex-row sm:items-center sm:justify-center sm:gap-3 sm:px-0">
+            <Link
+              href="/login"
+              className="inline-flex min-h-[44px] items-center justify-center rounded-full bg-black px-6 text-sm font-medium text-white transition hover:bg-black/90 dark:bg-white dark:text-black dark:hover:bg-white/90"
+            >
+              开始创建我的 LifeFrame
+            </Link>
+            <Link
+              href="/welcome"
+              className="inline-flex min-h-[44px] items-center justify-center rounded-full border border-black/20 px-6 text-sm text-black/80 transition hover:border-black/40 hover:text-black dark:border-white/20 dark:text-white/80 dark:hover:border-white/40 dark:hover:text-white"
+            >
+              先看看它如何工作
+            </Link>
+          </div>
+        </div>
+
+        {/* Globe as visual background — 40vh per doc Task 4 */}
+        <div className="relative h-[40vh] min-h-[260px] flex-shrink-0">
+          <Globe
+            markers={markers}
+            onMarkerSelect={handleMarkerSelect}
+            onClusterClick={handleClusterClick}
+          />
+        </div>
+
+        {/* Conditional buttons — only for signed-in users with
+            photos. Per doc Task 4 mobile layout: [ 时间旅行 ] [
+            人生足迹 ] below the globe. On This Day stays
+            desktop-only (it's a discovery feature for power
+            users, not a primary entry point). */}
+        {sessionUserId && (
+          <div className="flex flex-shrink-0 items-center justify-center gap-2 px-4 py-3">
+            {photos.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setTimeTravelOpen(true)}
+                aria-label="打开时间旅行"
+                className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-fuchsia-500/40 bg-white/95 px-4 text-xs text-fuchsia-700 dark:bg-black/40 dark:text-fuchsia-300/90"
+              >
+                ▶ 时间旅行
+              </button>
+            )}
+            {photos.some((p) => p.location_name) && (
+              <button
+                type="button"
+                onClick={() => setLifeJourneyOpen(true)}
+                aria-label="打开人生足迹"
+                className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-emerald-500/40 bg-white/95 px-4 text-xs text-emerald-700 dark:bg-black/40 dark:text-emerald-300/90"
+              >
+                🌏 人生足迹
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Timeline at the bottom of the mobile stack. */}
+        <div className="pointer-events-auto flex-shrink-0">
+          <Timeline
+            photos={photos}
+            selectedDate={selectedDate}
+            onChange={setSelectedDate}
+            windowDays={TIMELINE_WINDOW_DAYS}
+          />
+        </div>
+      </div>
+
+      {/* Frank #7243 Task 4: wrap the existing absolute-overlay
+          layout in a hidden/lg:block divider. The wrapper is a
+          logical hide/show toggle — no positioning — so the
+          absolute children inside still resolve to the app/page.tsx
+          parent (which is `relative h-[calc(100vh-65px)]`). On
+          mobile (< lg) this wrapper is hidden and the new mobile
+          layout (flex column, 40vh globe) below takes over. */}
+      <div className="hidden lg:block">
       <div className="absolute inset-0">
         <Globe
           markers={markers}
@@ -592,6 +685,7 @@ export function HomeGallery() {
           onChange={setSelectedDate}
           windowDays={TIMELINE_WINDOW_DAYS}
         />
+      </div>
       </div>
 
       

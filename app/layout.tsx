@@ -6,6 +6,7 @@ import { AuthButton } from '@/components/AuthButton';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { AdminLink } from '@/components/AdminLink';
 import { HomeLogo } from '@/components/HomeLogo';
+import { OnboardingFlow } from '@/components/OnboardingFlow';
 
 const SITE_URL = 'https://lifeframe.frank2025.com';
 const DESCRIPTION =
@@ -121,12 +122,27 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 admins never reached /upload anyway (the page
                 redirected non-admins to /). */}
             <AdminLink />
+            {/* Frank #7243 Task 5 (Day 2): "桌面：登录 + 开始记录".
+                Hidden on mobile because the mobile hero already
+                surfaces "开始创建我的 LifeFrame" as the primary
+                CTA (Task 4) — adding another nav button would
+                crowd the small viewport. Routes to /login — the
+                login page already redirects signed-in users back
+                to / (so this same link works for both "first
+                visit" and "returning user" flows). */}
+            <Link
+              href="/login"
+              className="hidden transition hover:text-[var(--text-primary)] sm:inline"
+            >
+              开始记录
+            </Link>
             <ThemeToggle />
             <AuthButton />
           </nav>
         </header>
         <main>{children}</main>
         <PWARegistrar />
+        <OnboardingFlow />
       </body>
     </html>
   );
