@@ -7,6 +7,9 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 import { AdminLink } from '@/components/AdminLink';
 import { HomeLogo } from '@/components/HomeLogo';
 import { OnboardingFlow } from '@/components/OnboardingFlow';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import { getLocale } from '@/lib/i18n-server';
+import { t } from '@/lib/i18n';
 
 const SITE_URL = 'https://lifeframe.frank2025.com';
 const DESCRIPTION =
@@ -109,9 +112,13 @@ const themeBootstrap = `
 })();
 `.trim();
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Frank #7304: read locale from cookie on every server render
+  // so the html lang + nav.start text + downstream app/page.tsx
+  // + HomeGallery.tsx all see the same value via lib/i18n.ts::t().
+  const locale = await getLocale();
   return (
-    <html lang="zh-Hans">
+    <html lang={locale === 'ja' ? 'ja' : 'zh-Hans'}>
       <head>
         <link rel="apple-touch-icon" href="/icon-192.png" />
         {/* eslint-disable-next-line @next/next/no-sync-scripts */}
@@ -120,7 +127,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-screen antialiased">
         <header className="relative z-10 flex items-center justify-between border-b border-[var(--border-primary)] bg-[var(--bg-primary)] px-6 py-4 text-[var(--text-primary)]">
           <HomeLogo />
-          <nav className="flex items-center gap-6 text-sm text-[var(--text-secondary)]">
+          <nav className="flex items-center gap-4 text-sm text-[var(--text-secondary)] sm:gap-6">
             {/* Frank #7129 #1: removed the global-nav "上传" link.
                 Upload functionality moved into /admin/upload
                 (Frank #7117 #1 / commit 79fddee) and is reachable
@@ -141,8 +148,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               href="/login"
               className="hidden transition hover:text-[var(--text-primary)] sm:inline"
             >
-              开始记录
+              {t(locale, 'nav.start')}
             </Link>
+            {/* Frank #7304: LanguageSwitcher (zh | ja). Writes to
+                the lifeframe-locale cookie + triggers router.refresh()
+                on change. Lives in the header nav but is shown on
+                all viewports (it's compact — single <select>). */}
+            <LanguageSwitcher current={locale} />
             <ThemeToggle />
             <AuthButton />
           </nav>

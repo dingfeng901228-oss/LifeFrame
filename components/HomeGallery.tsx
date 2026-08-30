@@ -8,6 +8,7 @@ import { TimeTravel } from '@/components/TimeTravel';
 import { LifeJourney } from '@/components/LifeJourney';
 import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
 import { photoImageUrl } from '@/lib/photo-url';
+import { t, type Locale } from '@/lib/i18n';
 
 type PhotoRow = {
   key: string;
@@ -43,7 +44,7 @@ type CommentRow = {
 const TIMELINE_WINDOW_DAYS = 30;
 const MS_PER_DAY = 24 * 3600 * 1000;
 
-export function HomeGallery() {
+export function HomeGallery({ locale }: { locale: Locale }) {
   const [photos, setPhotos] = useState<PhotoRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -528,13 +529,13 @@ export function HomeGallery() {
               href="/login"
               className="inline-flex min-h-[44px] items-center justify-center rounded-full bg-black px-6 text-sm font-medium text-white transition hover:bg-black/90 dark:bg-white dark:text-black dark:hover:bg-white/90"
             >
-              开始创建我的 LifeFrame
+              {t(locale, 'hero.cta.primary')}
             </Link>
             <Link
               href="/welcome"
               className="inline-flex min-h-[44px] items-center justify-center rounded-full border border-black/20 px-6 text-sm text-black/80 transition hover:border-black/40 hover:text-black dark:border-white/20 dark:text-white/80 dark:hover:border-white/40 dark:hover:text-white"
             >
-              先看看它如何工作
+              {t(locale, 'hero.cta.secondary')}
             </Link>
           </div>
         </div>
@@ -607,28 +608,29 @@ export function HomeGallery() {
 
       <div className="pointer-events-none absolute inset-x-0 top-24 flex flex-col items-center px-6 text-center">
         <p className="text-xs tracking-[0.4em] text-black/50 dark:text-white/50 uppercase">
-          写真で、暮らしの軌跡を残す
+          {t(locale, 'hero.japaneseSubtitle')}
         </p>
         <h1 className="mt-3 text-2xl font-light text-black dark:text-white md:text-3xl">
-          用照片，留下生活的痕迹。
+          {t(locale, 'hero.title')}
         </h1>
         <p className="mt-2 max-w-sm text-sm text-black/50 dark:text-white/50">
           {loading
-            ? '加载中…'
+            ? t(locale, 'hero.subtitle.loading')
             : photos.length === 0
-              ? '首页 3D 地球仪 — 上传第一张照片点亮地点'
+              ? t(locale, 'hero.subtitle.empty')
               : trimmedQuery
                 ? `${visibleCount} 张匹配 "${searchQuery.trim()}" · 共 ${photos.length} 张`
                 : selectedDate
                   ? `${visibleCount} 张照片在 ${formatMonth(selectedDate)} ± ${TIMELINE_WINDOW_DAYS / 2} 天窗口内`
-                  : `${photos.length} 张照片已点亮地点`}
+                  : t(locale, 'hero.subtitle.countNoFilter', { count: photos.length })}
         </p>
         {photos.length > 0 && (
           <input
             type="search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="🔍 搜索照片 (文件名 / 地点 / 分类)..."
+            placeholder={t(locale, 'hero.searchPlaceholder')}
+            aria-label={t(locale, 'hero.searchAriaLabel')}
             className="pointer-events-auto mt-3 w-full max-w-sm rounded-full border border-black/15 dark:border-white/15 bg-black/5 dark:bg-white/5 px-4 py-2 text-sm text-black dark:text-white placeholder-black/40 dark:placeholder-white/40 focus:border-black/40 dark:focus:border-white/40 focus:outline-none"
           />
         )}
