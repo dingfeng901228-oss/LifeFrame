@@ -76,6 +76,8 @@ export async function POST(req: NextRequest) {
       visibility?: unknown;
       location_name?: unknown;
       taken_at?: unknown;
+      lat?: unknown;
+      lng?: unknown;
     };
 
     if (Array.isArray(u.categories)) {
@@ -117,6 +119,33 @@ export async function POST(req: NextRequest) {
           updates.taken_at = parsed.toISOString();
         }
       }
+    }
+
+    // Frank #7292: edit-modal MapPicker confirmation writes
+    // lat/lng + location_name together. Coordinates are strictly
+    // bounded (lat ∈ [-90,90], lng ∈ [-180,180]) so a typo can't
+    // shove the marker to (0,0) or off the planet. Explicit null
+    // is allowed to clear; anything else invalid is silently
+    // dropped (matches the lenient pattern above).
+    if (u.lat === null) {
+      updates.lat = null;
+    } else if (
+      typeof u.lat === 'number' &&
+      Number.isFinite(u.lat) &&
+      u.lat >= -90 &&
+      u.lat <= 90
+    ) {
+      updates.lat = u.lat;
+    }
+    if (u.lng === null) {
+      updates.lng = null;
+    } else if (
+      typeof u.lng === 'number' &&
+      Number.isFinite(u.lng) &&
+      u.lng >= -180 &&
+      u.lng <= 180
+    ) {
+      updates.lng = u.lng;
     }
   }
 

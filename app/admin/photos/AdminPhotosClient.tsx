@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import type { PhotoRow } from '@/lib/supabase';
 import { photoImageUrl } from '@/lib/photo-url';
+import { MapPicker } from '@/components/MapPicker';
 
 /**
  * Admin photos client: renders the photo grid + bulk-selection
@@ -62,6 +63,12 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
   );
   const [editTakenAt, setEditTakenAt] = useState<string>('');
   const [editLocationName, setEditLocationName] = useState<string>('');
+  // Frank #7292: lat/lng + MapPicker state. Initialized from
+  // photo.lat / photo.lng on openEdit so the map opens centered
+  // on the existing pin (no need to re-search).
+  const [editLat, setEditLat] = useState<number | null>(null);
+  const [editLng, setEditLng] = useState<number | null>(null);
+  const [editMapOpen, setEditMapOpen] = useState(false);
   const [editCategories, setEditCategories] = useState<string[]>([]);
   const [editVisibility, setEditVisibility] = useState<
     'public' | 'unlisted' | 'private'
@@ -291,6 +298,9 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
     setEditingPhoto(photo);
     setEditTakenAt(takenAtLocal);
     setEditLocationName(photo.location_name ?? '');
+    setEditLat(photo.lat ?? null);
+    setEditLng(photo.lng ?? null);
+    setEditMapOpen(false);
     setEditCategories([...((photo.categories as string[]) ?? [])]);
     setEditVisibility(
       (photo.visibility as 'public' | 'unlisted' | 'private') ?? 'private',
@@ -322,6 +332,15 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
     }
     const trimmedLoc = editLocationName.trim().slice(0, 240);
     updates.location_name = trimmedLoc.length > 0 ? trimmedLoc : null;
+    // Frank #7292: persist the lat/lng from MapPicker (if set).
+    // Range-checks live in the API route (whitelist); null here
+    // means "don't touch this field" so partial edits work.
+    if (editLat !== null && Number.isFinite(editLat)) {
+      updates.lat = editLat;
+    }
+    if (editLng !== null && Number.isFinite(editLng)) {
+      updates.lng = editLng;
+    }
     if (editTakenAt.trim() === '') {
       updates.taken_at = null;
     } else {
@@ -892,6 +911,30 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
             </div>
           </div>
         </div>
+      )}
+      {/* Frank #7292: edit-modal MapPicker — opens when the
+          edit form's "🗭 在地图上确认位置" button is clicked.
+          Rendered as a sibling of the editingPhoto dialog so it
+          stacks above (MapPicker itself is fixed/inset-0). Prefills
+          with the photo's existing lat/lng so re-opening doesn't
+          snap to (0,0). OnSelect writes name + lat/lng back to
+          edit state and closes the picker; saveEdit (above) then
+          persists them via the bulk-update API. */}
+      {editMapOpen && (
+        <MapPicker
+          initial={
+            editLat !== null && editLng !== null
+              ? { lat: editLat, lng: editLng, name: editLocationName }
+              : null
+          }
+          onSelect={(loc) => {
+            setEditLocationName(loc.name);
+            setEditLat(loc.lat);
+            setEditLng(loc.lng);
+            setEditMapOpen(false);
+          }}
+          onClose={() => setEditMapOpen(false)}
+        />
       )}
     </div>
   );

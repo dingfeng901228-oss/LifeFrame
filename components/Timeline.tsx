@@ -26,6 +26,19 @@ const MS_PER_DAY = 24 * 3600 * 1000;
 // time passes (negligible between refreshes, but technically right).
 const MIN_DATE = new Date('1990-11-01T00:00:00Z');
 
+// Frank #7292: timeline playback speed options. Days per real-
+// second at each speed. Default 1× ≈ 365 days/s = one year per
+// real-second — a 35-year photo life scrubs through in ~35s.
+// Tuned similarly to the TimeTravel modal speeds but exposed on
+// the inline timeline so play/pause/speed is always one click
+// away (no need to open the modal for casual time-skim).
+const SPEED_OPTIONS: Array<{ label: string; daysPerSecond: number }> = [
+  { label: '0.5×', daysPerSecond: 183 },
+  { label: '1×', daysPerSecond: 365 },
+  { label: '2×', daysPerSecond: 730 },
+  { label: '4×', daysPerSecond: 1825 },
+];
+
 /**
  * Video-player-style progress bar Timeline.
  *
@@ -48,6 +61,25 @@ export function Timeline({
 }: Props) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
+  // Frank #7292: hover-tooltip + playback state. Hover is
+  // mouse-only (touch/pen drive scrubbing via onPointerDown
+  // instead — the tooltip would just flicker during a touch
+  // scroll). Playback uses requestAnimationFrame so the
+  // date-advance rate is independent of React's render cadence.
+  const [hoverDate, setHoverDate] = useState<Date | null>(null);
+  const [playing, setPlaying] = useState(false);
+  // SPEED_OPTIONS[1] = 1× (the middle "normal" speed).
+  const [speedIdx, setSpeedIdx] = useState(1);
+  // Active rAF id so the cleanup can cancel the loop correctly.
+  const rafRef = useRef<number | null>(null);
+  // Mirror selectedDate so the rAF effect reads the current
+  // value WITHOUT listing selectedDate in its deps — otherwise
+  // every frame's onChange would restart the effect and drop
+  // frames. Updated by an effect.
+  const selectedDateRef = useRef<Date | null>(selectedDate);
+  useEffect(() => {
+    selectedDateRef.current = selectedDate;
+  }, [selectedDate]);
 
   // Right edge = now (recomputed per render — cheap)
   const maxDate = useMemo(() => new Date(), []);
@@ -165,6 +197,87 @@ export function Timeline({
     };
   }, []);
 
+  // Frank #7292: hover-only tooltip source. Mouse-only on purpose
+  // — touch / pen events on the bar go through onPointerDown for
+  // scrubbing, and the tooltip would just flicker during a touch
+  // scroll. Pointer-leave clears it (mouse-off-bar).
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.pointerType !== 'mouse') return;
+      const date = dateFromClientX(e.clientX);
+      setHoverDate(date);
+    },
+    [dateFromClientX],
+  );
+  const handlePointerLeave = useCallback(() => {
+    setHoverDate(null);
+  }, []);
+
+  // Frank #7292: playback loop. rAF tick advances selectedDate
+  // by (elapsedMs × daysPerSecond / 1000) so the rate is
+  // independent of the rAF cadence (~60fps). Reaching maxDate
+  // pauses automatically so the playhead doesn't fly past the
+  // right edge. selectedDate is read via ref so the effect
+  // doesn't restart on every date bump.
+  useEffect(() => {
+    if (!playing) {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      return;
+    }
+    let lastTick = performance.now();
+    const speed = SPEED_OPTIONS[speedIdx];
+    const endMs = maxDate.getTime();
+    const tick = (now: number) => {
+      const dt = now - lastTick;
+      if (dt >= 16) {
+        lastTick = now;
+        const advanceDays = (dt / 1000) * speed.daysPerSecond;
+        const baseMs = (selectedDateRef.current ?? minDate).getTime();
+        const nextMs = baseMs + advanceDays * MS_PER_DAY;
+        if (nextMs >= endMs) {
+          onChange(maxDate);
+          setPlaying(false);
+          return;
+        }
+        onChange(new Date(nextMs));
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+  }, [playing, speedIdx, onChange, maxDate, minDate]);
+
+  // Frank #7292: Space toggles play / pause, anywhere on the
+  // page. Inputs / textareas / contentEditable nodes opt out so
+  // typing " " in a textarea doesn't accidentally pause
+  // playback.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (
+        e.target instanceof HTMLElement &&
+        (e.target.tagName === 'INPUT' ||
+          e.target.tagName === 'TEXTAREA' ||
+          e.target.isContentEditable)
+      ) {
+        return;
+      }
+      if (e.code === 'Space') {
+        e.preventDefault();
+        setPlaying((p) => !p);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   const handlePos = selectedDate ? positionFor(selectedDate) : null;
   const halfWindowPct = (windowDays / 2 / (totalSpan / MS_PER_DAY)) * 100;
   const rangeStart =
@@ -222,10 +335,37 @@ export function Timeline({
             </div>
           )}
 
+        {/* Frank #7292: hover tooltip — shows the date for any
+            bar position the mouse is over. Hidden when there's a
+            selected date (the existing thumbnail popup carries
+            richer context) and while dragging (so the tooltip
+            doesn't fight the scrub UX). */}
+        {hoverDate &&
+          !selectedDate &&
+          !dragging && (
+            <div
+              className="pointer-events-none absolute z-20"
+              style={{
+                left: `${positionFor(hoverDate)}%`,
+                bottom: '100%',
+                transform: 'translateX(-50%)',
+                marginBottom: '8px',
+              }}
+            >
+              <div className="rounded border border-black/15 bg-white/95 px-2 py-1 text-xs tabular-nums text-black shadow-lg backdrop-blur-sm dark:border-white/20 dark:bg-black/90 dark:text-white">
+                {formatShort(hoverDate)}
+              </div>
+            </div>
+          )}
+
         {/* Bar */}
         <div
           ref={trackRef}
           onPointerDown={handlePointerDown}
+          // Frank #7292: hover-only (mouse) tooltip source — touch
+          // / pen drive scrubbing via onPointerDown instead.
+          onPointerMove={handlePointerMove}
+          onPointerLeave={handlePointerLeave}
           // Frank #7243 Task 8 (B4): a11y for the timeline track.
           // Treats it as a slider — keyboard users can still scrub by
           // pointer (the SVG isn't focusable; mouse-only on desktop).
@@ -289,6 +429,65 @@ export function Timeline({
               style={{ left: `${handlePos}%` }}
             />
           )}
+        </div>
+      </div>
+
+      {/* Frank #7292: playback control row — video-player style.
+          Skip-to-start / play-pause / skip-to-now + speed
+          selector with 0.5× / 1× / 2× / 4×. aria-pressed on the
+          speed buttons for screen readers. Space toggles
+          play / pause from anywhere; the buttons here are for
+          mouse / touch. */}
+      <div className="mt-1.5 flex items-center justify-center gap-2 text-xs text-black/65 dark:text-white/65">
+        <button
+          type="button"
+          onClick={() => {
+            setPlaying(false);
+            onChange(minDate);
+          }}
+          aria-label="回到起点"
+          title="回到起点"
+          className="rounded-full border border-black/20 px-2 py-0.5 transition hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/5"
+        >
+          ⏮
+        </button>
+        <button
+          type="button"
+          onClick={() => setPlaying((p) => !p)}
+          aria-label={playing ? '暂停播放' : '开始播放'}
+          title={playing ? '暂停 (空格)' : '播放 (空格)'}
+          className="rounded-full bg-black px-3 py-0.5 font-medium text-white transition hover:bg-black/90 dark:bg-white dark:text-black dark:hover:bg-white/90"
+        >
+          {playing ? '⏸ 暂停' : '▶ 播放'}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setPlaying(false);
+            onChange(maxDate);
+          }}
+          aria-label="跳到最新"
+          title="跳到最新"
+          className="rounded-full border border-black/20 px-2 py-0.5 transition hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/5"
+        >
+          ⏭
+        </button>
+        <div className="ml-2 flex gap-0.5 rounded-full border border-black/20 p-0.5 dark:border-white/20">
+          {SPEED_OPTIONS.map((s, i) => (
+            <button
+              key={s.label}
+              type="button"
+              onClick={() => setSpeedIdx(i)}
+              aria-pressed={speedIdx === i}
+              className={`rounded-full px-2 py-0.5 transition ${
+                speedIdx === i
+                  ? 'bg-black text-white dark:bg-white dark:text-black'
+                  : 'text-black/55 hover:text-black dark:text-white/55 dark:hover:text-white'
+              }`}
+            >
+              {s.label}
+            </button>
+          ))}
         </div>
       </div>
 
