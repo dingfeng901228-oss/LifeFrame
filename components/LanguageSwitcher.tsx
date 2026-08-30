@@ -9,22 +9,27 @@ type Props = {
 };
 
 /**
- * Frank #7304: locale switcher.
+ * Frank #7309: inline locale pill group (replaces the dropdown
+ * from B7 commit 2aa861a).
  *
- * Writes the chosen locale to a long-lived cookie (max-age 1y,
- * SameSite=Lax) and triggers Next.js router.refresh() to re-
- * render server components with the new locale. The cookie is
- * read by lib/i18n-server.ts::getLocale() on every server render,
- * so all t() calls update atomically.
+ * Frank called out two issues with the <select>-based version:
+ *   - the option list is hidden behind the dropdown caret;
+ *     users don't realize a language toggle exists at all
+ *     until they interact
+ *   - dark-mode contrast was poor on the transparent <select>
+ *     + native option-list rendering (Frank #7309: "深色页
+ *     面下，易读性太差")
  *
- * Using a <select> (not a button row) keeps the switcher compact
- * for the small viewports documented in Task 4. Options are
- * defined in lib/i18n.ts::LOCALES so adding a third locale
- * later is a single-file change.
+ * Replaced with an inline segmented control: both languages
+ * always visible, active one filled (bg-black/white) + bold
+ * text, inactive one outlined (transparent bg + subdued text +
+ * hover bg). aria-pressed on each button so screen readers
+ * announce the selected state. Wrapper has role="group" +
+ * aria-label so the cluster has a discoverable name (otherwise
+ * AT would just read two button labels with no relationship).
  *
- * Pending state via useTransition so the dropdown stays
- * responsive even on slower networks; refresh() in a transition
- * signals intent to Next.js without blocking the UI.
+ * Cookie + router.refresh() write-path is unchanged from the
+ * dropdown version — only the UI markup changed.
  */
 export function LanguageSwitcher({ current }: Props) {
   const router = useRouter();
@@ -42,31 +47,35 @@ export function LanguageSwitcher({ current }: Props) {
   }
 
   return (
-    <label className="relative inline-flex items-center">
-      <span className="sr-only">{t(current, 'language.switcherLabel')}</span>
-      <select
-        // Native <select> with aria-label (visually hidden label
-        // above provides the text). appearance-none strips the
-        // default chevron so the custom ▾ we paint next to it
-        // looks consistent across browsers.
-        aria-label={t(current, 'language.switcherLabel')}
-        value={current}
-        onChange={(e) => setLocale(e.target.value as Locale)}
-        disabled={pending}
-        className="appearance-none cursor-pointer rounded border border-black/15 bg-transparent px-2 py-1 pr-6 text-xs text-[var(--text-secondary)] transition hover:border-black/40 hover:text-[var(--text-primary)] focus-visible:ring-2 focus-visible:ring-cyan-400 disabled:opacity-50 dark:border-white/15 dark:hover:border-white/40"
-      >
-        {LOCALES.map((l) => (
-          <option key={l.code} value={l.code}>
+    <div
+      role="group"
+      aria-label={t(current, 'language.switcherLabel')}
+      // Container is a soft pill on both themes: white on light,
+      // semi-transparent black on dark. The active button inside
+      // inverts the colors for unambiguous "currently selected"
+      // state — bg-black text-white on light, bg-white text-black
+      // on dark. Both combos are AAA-contrast on their bg.
+      className="inline-flex items-center rounded-full border border-black/15 bg-white/95 p-0.5 dark:border-white/20 dark:bg-black/40"
+    >
+      {LOCALES.map((l) => {
+        const active = l.code === current;
+        return (
+          <button
+            key={l.code}
+            type="button"
+            onClick={() => setLocale(l.code)}
+            disabled={pending}
+            aria-pressed={active}
+            className={`min-h-[28px] rounded-full px-3 py-0.5 text-xs font-medium transition focus-visible:ring-2 focus-visible:ring-cyan-400 disabled:cursor-not-allowed disabled:opacity-50 ${
+              active
+                ? 'bg-black text-white dark:bg-white dark:text-black'
+                : 'text-black/65 hover:bg-black/5 hover:text-black dark:text-white/70 dark:hover:bg-white/10 dark:hover:text-white'
+            }`}
+          >
             {l.label}
-          </option>
-        ))}
-      </select>
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-black/40 dark:text-white/40"
-      >
-        ▾
-      </span>
-    </label>
+          </button>
+        );
+      })}
+    </div>
   );
 }

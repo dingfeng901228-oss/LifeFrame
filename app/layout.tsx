@@ -136,24 +136,24 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 admins never reached /upload anyway (the page
                 redirected non-admins to /). */}
             <AdminLink />
-            {/* Frank #7243 Task 5 (Day 2): "桌面：登录 + 开始记录".
-                Hidden on mobile because the mobile hero already
-                surfaces "开始创建我的 LifeFrame" as the primary
-                CTA (Task 4) — adding another nav button would
-                crowd the small viewport. Routes to /login — the
-                login page already redirects signed-in users back
-                to / (so this same link works for both "first
-                visit" and "returning user" flows). */}
-            <Link
-              href="/login"
-              className="hidden transition hover:text-[var(--text-primary)] sm:inline"
-            >
-              {t(locale, 'nav.start')}
-            </Link>
-            {/* Frank #7304: LanguageSwitcher (zh | ja). Writes to
-                the lifeframe-locale cookie + triggers router.refresh()
-                on change. Lives in the header nav but is shown on
-                all viewports (it's compact — single <select>). */}
+            {/* Frank #7304 + #7309: LanguageSwitcher (zh | ja).
+                Originally a <select> dropdown in B7 commit 2aa861a.
+                #7309 called out two issues with the dropdown:
+                  - the option list is hidden behind a <select>;
+                    users don't realize a language toggle exists
+                  - dark-mode contrast was poor on the transparent
+                    <select> + caret + native option-list rendering
+                Replaced with an inline pill group showing both
+                languages always-visible, active one filled, inactive
+                one outlined. Writes to the lifeframe-locale cookie
+                + triggers router.refresh() on change.
+
+                Frank #7309 also removed the standalone "开始记录"
+                link from the nav (it was redundant with the mobile
+                hero's "开始创建我的 LifeFrame" CTA + the desktop
+                /welcome page's primary CTA — users have plenty of
+                entry points without a third one in the global
+                header). */}
             <LanguageSwitcher current={locale} />
             <ThemeToggle />
             <AuthButton />
