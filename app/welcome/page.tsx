@@ -8,6 +8,12 @@ export const metadata: Metadata = {
   // Override the layout's default robots: { index: false } so this
   // public marketing page actually shows up in Google.
   robots: { index: true, follow: true },
+  // Frank #7243 Task 7 (SEO): self-referential canonical. The page
+  // is unique (not a duplicate of /) — Google can index both /
+  // and /welcome as separate entries.
+  alternates: {
+    canonical: '/welcome',
+  },
 };
 
 const SITE_URL = 'https://lifeframe.frank2025.com';

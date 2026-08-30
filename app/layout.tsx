@@ -41,12 +41,19 @@ export const metadata: Metadata = {
     siteName: 'LifeFrame',
     title: 'LifeFrame — 用照片，留下生活的痕迹',
     description: DESCRIPTION,
+    // Frank #7243 Task 7: replace the app-icon OG image with a
+    // proper 1200x630 social-share banner. The banner was generated
+    // via image_generate (1280x720 JPEG — close enough to the
+    // 1.91:1 OG standard; most platforms accept either 16:9 or
+    // 1.91:1 and re-crop to fit). Alt text describes the brand
+    // pitch instead of just "Logo" so social previews are useful
+    // when the image fails to load.
     images: [
       {
-        url: '/icon-512.png',
-        width: 512,
-        height: 512,
-        alt: 'LifeFrame Logo',
+        url: '/og-banner.jpg',
+        width: 1280,
+        height: 720,
+        alt: 'LifeFrame — 用照片，留下生活的痕迹',
       },
     ],
   },
@@ -54,7 +61,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'LifeFrame — 用照片，留下生活的痕迹',
     description: DESCRIPTION,
-    images: ['/icon-512.png'],
+    images: ['/og-banner.jpg'],
   },
   // Most pages are auth-gated; /welcome overrides to index: true.
   robots: { index: false, follow: true },
