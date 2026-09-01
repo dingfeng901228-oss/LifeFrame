@@ -806,7 +806,7 @@ export function PhotoViewer({
               longer `absolute inset-0 h-full w-full` (which would
               force them to fill a wrong-ratio box); they now size
               themselves to their natural aspect ratio via
-              `max-h-full max-w-full object-contain`. */}
+              `max-h-[75vh] max-w-full object-contain`. */}
           {leavingPhoto && (
             <div
               key={`leaving-wrap-${leavingPhoto.photo.key}`}
@@ -828,7 +828,7 @@ export function PhotoViewer({
                 alt=""
                 aria-hidden="true"
                 draggable={false}
-                className={`max-h-full max-w-full object-contain ${
+                className={`max-h-[75vh] max-w-full object-contain ${
                   leavingPhoto.direction === 1
                     ? 'pv-photo-out-left'
                     : 'pv-photo-out-right'
@@ -856,7 +856,7 @@ export function PhotoViewer({
               src={photoImageUrl(currentPhoto, 'full')}
               alt={currentPhoto.filename}
               draggable={false}
-              className={`max-h-full max-w-full object-contain ${
+              className={`max-h-[75vh] max-w-full object-contain ${
                 direction === 1
                   ? 'pv-photo-in-right'
                   : direction === -1
