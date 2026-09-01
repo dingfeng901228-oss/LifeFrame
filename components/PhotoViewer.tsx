@@ -766,13 +766,18 @@ export function PhotoViewer({
           </button>
         </div>
 
-        {/* Photo stage — fixed aspect ratio container, drag layer
-            wraps the photo stack so pointer drag doesn't fight the
-            CSS animation classes on the imgs. */}
+        {/* Photo stage — grid layout, imgs overlap via grid-area: 1/1.
+            Container sizes from the largest grid item, capped by
+            maxHeight 75vh. NO fixed aspectRatio on the container:
+            the previous 3/2 default forced non-3:2 photos (e.g. 4:3
+            landscape, 3:4 portrait) to render at thumbnail size via
+            object-contain inside the wrong-ratio box (Frank #7545).
+            minHeight 320 gives a sane fallback before the first img
+            natural size resolves. */}
         <div
-          className="relative w-full select-none overflow-hidden rounded-lg bg-black/30 touch-none"
+          className="relative grid w-full select-none place-items-center overflow-hidden rounded-lg bg-black/30 touch-none"
           style={{
-            aspectRatio: String(aspectRatio),
+            minHeight: '320px',
             maxHeight: '75vh',
           }}
           onPointerDown={onPointerDown}
@@ -791,10 +796,54 @@ export function PhotoViewer({
             else if (ratio > 0.67) goNext();
           }}
         >
-          {/* Drag layer (follows finger during pointer drag) */}
+          {/* Each img is wrapped in a div at grid-area: 1/1 so they
+              overlap at the same position (for the slide animation).
+              The wrapper handles dragOffset translate + transition;
+              the inner img handles its own slide CSS animation.
+              The two transforms compose via parent-child
+              multiplication, so the slide animation stays intact
+              even while dragOffset is being applied. Imgs are no
+              longer `absolute inset-0 h-full w-full` (which would
+              force them to fill a wrong-ratio box); they now size
+              themselves to their natural aspect ratio via
+              `max-h-full max-w-full object-contain`. */}
+          {leavingPhoto && (
+            <div
+              key={`leaving-wrap-${leavingPhoto.photo.key}`}
+              style={{
+                gridArea: '1 / 1',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transform: `translate3d(${dragOffset}px, 0, 0)`,
+                transition: isDragging
+                  ? 'none'
+                  : `transform ${ANIMATION_DURATION_MS}ms cubic-bezier(0.32, 0.72, 0, 1)`,
+                willChange: 'transform',
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={photoImageUrl(leavingPhoto.photo, 'full')}
+                alt=""
+                aria-hidden="true"
+                draggable={false}
+                className={`max-h-full max-w-full object-contain ${
+                  leavingPhoto.direction === 1
+                    ? 'pv-photo-out-left'
+                    : 'pv-photo-out-right'
+                }`}
+              />
+            </div>
+          )}
+          {/* Current photo wrapper */}
           <div
-            className="absolute inset-0"
+            key={`current-wrap-${currentPhoto.key}-${retryNonce}`}
             style={{
+              gridArea: '1 / 1',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               transform: `translate3d(${dragOffset}px, 0, 0)`,
               transition: isDragging
                 ? 'none'
@@ -802,30 +851,12 @@ export function PhotoViewer({
               willChange: 'transform',
             }}
           >
-            {/* Leaving photo (slides out via CSS animation) */}
-            {leavingPhoto && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={`leaving-${leavingPhoto.photo.key}`}
-                src={photoImageUrl(leavingPhoto.photo, 'full')}
-                alt=""
-                aria-hidden="true"
-                draggable={false}
-                className={`absolute inset-0 h-full w-full object-contain ${
-                  leavingPhoto.direction === 1
-                    ? 'pv-photo-out-left'
-                    : 'pv-photo-out-right'
-                }`}
-              />
-            )}
-            {/* Current photo */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              key={`current-${currentPhoto.key}-${retryNonce}`}
               src={photoImageUrl(currentPhoto, 'full')}
               alt={currentPhoto.filename}
               draggable={false}
-              className={`absolute inset-0 h-full w-full object-contain ${
+              className={`max-h-full max-w-full object-contain ${
                 direction === 1
                   ? 'pv-photo-in-right'
                   : direction === -1
@@ -835,16 +866,10 @@ export function PhotoViewer({
               onLoad={(e) => {
                 const el = e.currentTarget;
                 if (el.naturalWidth > 0 && el.naturalHeight > 0) {
-                  const ratio = el.naturalWidth / el.naturalHeight;
-                  if (
-                    !aspectRatioCache.has(currentPhoto.key) ||
-                    aspectRatioCache.get(currentPhoto.key) !== ratio
-                  ) {
-                    aspectRatioCache.set(currentPhoto.key, ratio);
-                    // Force one re-render so the container picks up
-                    // the new aspect-ratio on the next paint.
-                    setCurrentPhoto((prev) => ({ ...prev }));
-                  }
+                  aspectRatioCache.set(
+                    currentPhoto.key,
+                    el.naturalWidth / el.naturalHeight,
+                  );
                 }
                 setImageErrorKey(null);
               }}
