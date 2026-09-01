@@ -95,6 +95,35 @@ public/
 5. 时间轴基础结构 + 与 Globe 联动
 6. 照片详情页 + 编辑地点（GPS / 地图选点 / 当前位置三选一）
 
+## PhotoViewer 手动验证 Checklist
+
+> Photo Detail Viewer（commit `050707c`）已通过 Playwright 自测 12/12，剩 3 项需要人眼/人手感确认。脚本模拟不了。
+
+### 1. 🐢 慢速网络（3G throttle）
+- **怎么测**：DevTools → Network → Throttling: **Slow 3G**
+- **操作**：点开任意 cluster → 进 viewer → 连续按 → 翻 5 张
+- **期望**：
+  - 翻页不会卡死（prev/current/next 预加载策略生效）
+  - 图片加载失败时出现"重试"按钮（不是空白）
+  - `/p/{key}` URL 仍然同步
+
+### 2. 👆 快速连续切换
+- **怎么测**：打开 viewer 后 100-200ms 内狂点 → 键（或桌面左右区）
+- **操作**：连点 20 次，看会不会跳错 / 卡死 / 计数错位
+- **期望**：
+  - `transitioningRef` 防 transition 重入工作（不会跳 2 张）
+  - 键盘不会把 textarea 评论框的输入抢走
+  - like/comment 计数不会被双击 +1
+
+### 3. 📐 Layout Shift 视觉检查
+- **怎么测**：DevTools → Performance → 录制 → 在 viewer 里翻 5-10 张
+- **操作**：看 Layout Shifts 面板有没有红色 CLS
+- **期望**：
+  - **0 Shift**（aspect-ratio cache + 容器预留比例生效）
+  - controls / position indicator 不抖动
+
+---
+
 ## 隐私口径（先在心里挂上）
 
 - 默认私人；公开档位只暴露城市级 GPS，不暴露精确 lat/lng
