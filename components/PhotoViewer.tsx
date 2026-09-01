@@ -775,7 +775,7 @@ export function PhotoViewer({
             minHeight 320 gives a sane fallback before the first img
             natural size resolves. */}
         <div
-          className="relative grid w-full select-none place-items-center overflow-hidden rounded-lg bg-black/30 touch-none"
+          className="relative grid grid-cols-1 w-full select-none overflow-hidden rounded-lg bg-black/30 touch-none"
           style={{
             minHeight: '320px',
             maxHeight: '75vh',

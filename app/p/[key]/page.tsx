@@ -57,15 +57,28 @@ export default async function PublicPhotoPage({
   const { data: photo } = await supabase
     .from('photos')
     .select(
-      'key, public_url, thumbnail_url, filename, taken_at, location_name, lat, lng, visibility, categories, camera_make, camera_model',
+      'key, user_id, public_url, thumbnail_url, filename, taken_at, location_name, lat, lng, visibility, categories, camera_make, camera_model',
     )
     .eq('key', key)
     .maybeSingle();
 
-  // 404 for missing OR private. private photos are owner-only and
-  // must not leak via direct URL.
-  if (!photo || photo.visibility === 'private') {
+  // 404 for missing only.
+  if (!photo) {
     notFound();
+  }
+
+  // Private photos are owner-only. Verify the session is the owner
+  // before rendering; non-owners (incl. signed-in strangers) get a
+  // 404 — don't leak the photo's existence via direct URL.
+  // (Frank #7563: refresh at /p/<key> 404'd even for him because
+  // the previous code unconditionally 404'd on visibility=private.)
+  if (photo.visibility === 'private') {
+    const supabaseServer = await createSupabaseServerClient();
+    const { data: sessionData } = await supabaseServer.auth.getSession();
+    const user = sessionData.session?.user;
+    if (!user || user.id !== photo.user_id) {
+      notFound();
+    }
   }
 
   // Frank #7203 #2: 'unlisted' is "不公开" — non-logged-in users
