@@ -1,41 +1,15 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Globe } from '@/components/Globe';
 import { Timeline } from '@/components/Timeline';
 import { TimeTravel } from '@/components/TimeTravel';
 import { LifeJourney } from '@/components/LifeJourney';
+import { PhotoViewer, type PhotoRow } from '@/components/PhotoViewer';
 import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
 import { photoImageUrl } from '@/lib/photo-url';
 import { t, type Locale } from '@/lib/i18n';
-
-type PhotoRow = {
-  key: string;
-  lat: number | null;
-  lng: number | null;
-  public_url: string;
-  thumbnail_url: string | null;
-  filename: string;
-  taken_at: string | null;
-  created_at: string;
-  camera_make: string | null;
-  camera_model: string | null;
-  categories: string[] | null;
-  // Per §24 of 要件定義書: "实际位置在公开页面只显示 Tokyo, Japan，
-  // 甚至可以提供模糊位置（只显示城市，不显示具体地点）".
-  // Prefer this over lat/lng in the UI; fall back to rounded lat/lng
-  // when the photo was uploaded without going through Nominatim.
-  location_name: string | null;
-};
-
-// §4 of 需求0827 — comment row shape (subset of photo_comments table).
-type CommentRow = {
-  id: string;
-  content: string;
-  created_at: string;
-  user_id: string;
-};
 
 // Frank #7203 #3: ±30 天 → ±15 天. The constant is the total
 // window size; Timeline.tsx halves it for the cyan range overlay
@@ -50,41 +24,19 @@ export function HomeGallery({ locale }: { locale: Locale }) {
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [selected, setSelected] = useState<PhotoRow | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  // Frank #7187: batch-level cluster context for the photo detail
-  // modal. When the detail modal is opened from a 'same-location
-  // photos' (同地点照片) cluster thumbnail, this holds the rest
-  // of the cluster's photos so prev/next navigation knows what set
-  // to iterate. null = opened from a single marker (not a cluster)
-  // → no prev/next UI shown.
-  const [selectedCluster, setSelectedCluster] = useState<PhotoRow[] | null>(null);
-  // Frank #7187: live swipe offset (px) applied as translateX to the
-  // image container while the user is dragging. Released above the
-  // threshold (>80 px) → goPrev/goNext + snap back; below the
-  // threshold → snap back only. The transform transition uses iOS-
-  // like cubic-bezier for the snap-back so it feels native on both
-  // desktop click and mobile swipe.
-  const [animOffset, setAnimOffset] = useState(0);
-  // Frank #7187: touch start position (clientX). Used as the
-  // reference for deltaX during swipe drag.
-  const touchStartXRef = useRef<number | null>(null as number | null);
+  // Frank #7509: cluster browsing now flows through the unified
+  // PhotoViewer, which navigates visiblePhotos chronologically.
+  // Cluster photos are typically adjacent in time at the same
+  // location, so this naturally walks through them. No separate
+  // cluster context state needed.
   const [onThisDayOpen, setOnThisDayOpen] = useState(false);
   const [clusterOpen, setClusterOpen] = useState(false);
   const [clusterPhotos, setClusterPhotos] = useState<PhotoRow[]>([]);
   const [timeTravelOpen, setTimeTravelOpen] = useState(false);
   const [lifeJourneyOpen, setLifeJourneyOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  // §3 of 需求0827 — like state for the currently-selected photo.
-  const [likeCount, setLikeCount] = useState(0);
-  const [userLiked, setUserLiked] = useState(false);
-  const [likePending, setLikePending] = useState(false);
   // null = not loaded yet / guest; set after auth.getSession() resolves.
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
-  // §4 of 需求0827 — comments for the currently-selected photo.
-  const [comments, setComments] = useState<CommentRow[]>([]);
-  const [commentsLoading, setCommentsLoading] = useState(false);
-  const [newCommentText, setNewCommentText] = useState('');
-  const [commentPending, setCommentPending] = useState(false);
-  const [commentError, setCommentError] = useState<string | null>(null);
 
   useEffect(() => {
     // Frank #7203 #4: use the cached browser client (cookie-backed
@@ -142,12 +94,14 @@ export function HomeGallery({ locale }: { locale: Locale }) {
   }, []);
 
   // ESC cascades through modals — top-most closes first.
-  // Detail modal wins over On This Day, which wins over Cluster.
+  // The PhotoViewer handles its own ESC internally (closes
+  // itself); this effect only catches ESC for On This Day and
+  // Cluster modals since those don't have an internal handler.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      if (selected) setSelected(null);
-      else if (onThisDayOpen) setOnThisDayOpen(false);
+      if (selected) return; // PhotoViewer owns ESC here
+      if (onThisDayOpen) setOnThisDayOpen(false);
       else if (clusterOpen) setClusterOpen(false);
     };
     window.addEventListener('keydown', onKey);
@@ -207,139 +161,10 @@ export function HomeGallery({ locale }: { locale: Locale }) {
     };
   }, []);
 
-  // Fetch likes for the photo currently open in the detail modal.
-  // Resets to 0/false when the modal closes so a stale count doesn't
-  // leak into the next photo's open.
-  useEffect(() => {
-    if (!selected) {
-      setLikeCount(0);
-      setUserLiked(false);
-      return;
-    }
-    let mounted = true;
-    fetch(`/api/photos/${encodeURIComponent(selected.key)}/likes`)
-      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
-      .then((data: { count?: number; userLiked?: boolean }) => {
-        if (!mounted) return;
-        setLikeCount(data.count ?? 0);
-        setUserLiked(Boolean(data.userLiked));
-      })
-      .catch(() => {
-        // Silent — count stays at 0, button stays disabled for guests.
-      });
-    return () => {
-      mounted = false;
-    };
-  }, [selected?.key]);
-
-  // Fetch comments for the selected photo (§4). Resets to empty when
-  // modal closes so the next photo's open starts fresh.
-  useEffect(() => {
-    if (!selected) {
-      setComments([]);
-      return;
-    }
-    let mounted = true;
-    setCommentsLoading(true);
-    fetch(`/api/photos/${encodeURIComponent(selected.key)}/comments`)
-      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
-      .then((data: { comments?: CommentRow[] }) => {
-        if (!mounted) return;
-        setComments(data.comments ?? []);
-      })
-      .catch(() => {
-        // Silent — empty list is the fallback.
-      })
-      .finally(() => {
-        if (mounted) setCommentsLoading(false);
-      });
-    return () => {
-      mounted = false;
-    };
-  }, [selected?.key]);
-
-  async function postComment() {
-    const trimmed = newCommentText.trim();
-    if (
-      !sessionUserId ||
-      commentPending ||
-      !selected ||
-      trimmed.length === 0
-    )
-      return;
-    setCommentPending(true);
-    setCommentError(null);
-    try {
-      const res = await fetch(
-        `/api/photos/${encodeURIComponent(selected.key)}/comments`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: trimmed }),
-        },
-      );
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text.slice(0, 160));
-      }
-      const data = (await res.json()) as { comment?: CommentRow };
-      if (data.comment) {
-        setComments((c) => [...c, data.comment as CommentRow]);
-      }
-      setNewCommentText('');
-    } catch (err) {
-      setCommentError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setCommentPending(false);
-    }
-  }
-
-  async function deleteComment(id: string) {
-    if (!sessionUserId || !selected) return;
-    try {
-      const res = await fetch(
-        `/api/photos/${encodeURIComponent(selected.key)}/comments/${encodeURIComponent(id)}`,
-        { method: 'DELETE' },
-      );
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text.slice(0, 160));
-      }
-      setComments((c) => c.filter((x) => x.id !== id));
-    } catch (err) {
-      setCommentError(err instanceof Error ? err.message : String(err));
-    }
-  }
-
-  async function toggleLike() {
-    if (!sessionUserId || likePending || !selected) return;
-    const key = selected.key;
-    setLikePending(true);
-    // Optimistic flip; server response reconciles the authoritative
-    // count so two rapid clicks still end up at the right total.
-    const wasLiked = userLiked;
-    setUserLiked(!wasLiked);
-    setLikeCount((c) => c + (wasLiked ? -1 : 1));
-    try {
-      const res = await fetch(
-        `/api/photos/${encodeURIComponent(key)}/like`,
-        { method: 'POST' },
-      );
-      if (!res.ok) throw new Error(`like toggle ${res.status}`);
-      const data = (await res.json()) as {
-        liked?: boolean;
-        count?: number;
-      };
-      if (typeof data.liked === 'boolean') setUserLiked(data.liked);
-      if (typeof data.count === 'number') setLikeCount(data.count);
-    } catch {
-      // Revert optimistic update on failure.
-      setUserLiked(wasLiked);
-      setLikeCount((c) => c + (wasLiked ? 1 : -1));
-    } finally {
-      setLikePending(false);
-    }
-  }
+  // Frank #7509: likes / comments / drag / URL sync / aspect-ratio
+  // reservation all moved into components/PhotoViewer.tsx. HomeGallery
+  // just owns the gallery-level state (photos, selected photo,
+  // timeline filter, search, sessionUserId, modals).
 
   // §27 second-phase: photo search. Filter photos by query matching
   // filename / location_name / any category. Empty query = no filter.
@@ -449,60 +274,9 @@ export function HomeGallery({ locale }: { locale: Locale }) {
       .map(([year, yearPhotos]) => ({ year, photos: yearPhotos }));
   }, [photos]);
 
-  // Frank #7187: photo detail modal navigation. When the detail
-  // modal is opened from a cluster thumbnail, prev/next navigate
-  // through the rest of the cluster's photos. When opened from a
-  // single marker (handleMarkerSelect), selectedCluster is null
-  // and the prev/next buttons are hidden. The selectedClusterIndex
-  // derived value -1 means "no cluster context" — the UI treats
-  // that as "don't render prev/next".
-  const selectedClusterIndex = useMemo(() => {
-    if (!selected || !selectedCluster) return -1;
-    return selectedCluster.findIndex((p) => p.key === selected.key);
-  }, [selected, selectedCluster]);
-
-  function goPrev() {
-    if (!selectedCluster) return;
-    const idx = selectedClusterIndex;
-    if (idx <= 0) return;
-    setSelected(selectedCluster[idx - 1]);
-  }
-
-  function goNext() {
-    if (!selectedCluster) return;
-    const idx = selectedClusterIndex;
-    if (idx >= selectedCluster.length - 1) return;
-    setSelected(selectedCluster[idx + 1]);
-  }
-
-  // Frank #7187: mobile swipe handlers on the photo container.
-  // onTouchStart records the start X; onTouchMove updates the live
-  // translateX so the photo follows the finger; onTouchEnd decides
-  // whether to commit (>= 80 px past start) or snap back. The
-  // container's CSS transition handles the snap-back easing.
-  // <HTMLDivElement> generic required: handlers are bound to a
-  // <div> (the swipe container) so TypeScript needs the generic
-  // to match the inferred TouchEventHandler<HTMLDivElement> type.
-  function handleTouchStart(e: React.TouchEvent<HTMLDivElement>) {
-    touchStartXRef.current = e.touches[0].clientX;
-  }
-
-  function handleTouchMove(e: React.TouchEvent<HTMLDivElement>) {
-    if (touchStartXRef.current === null) return;
-    setAnimOffset(e.touches[0].clientX - touchStartXRef.current);
-  }
-
-  function handleTouchEnd(e: React.TouchEvent<HTMLDivElement>) {
-    if (touchStartXRef.current === null) return;
-    const threshold = 80;
-    if (animOffset > threshold) {
-      goPrev();
-    } else if (animOffset < -threshold) {
-      goNext();
-    }
-    setAnimOffset(0);
-    touchStartXRef.current = null;
-  }
+  // Frank #7509: cluster / swipe / prev-next logic moved into
+  // components/PhotoViewer.tsx. HomeGallery now just renders the
+  // viewer and passes visiblePhotos as the browse context.
 
   return (
     <>
@@ -692,249 +466,32 @@ export function HomeGallery({ locale }: { locale: Locale }) {
 
       
 
-      {/* Detail modal — full image + EXIF */}
+      {/* Frank #7509: Photo Detail Viewer replaced the inline modal
+          (which only supported cluster-context prev/next and had no
+          URL sync / keyboard nav / preload / aspect-ratio
+          reservation). New component handles:
+          - direction-aware horizontal slide + opacity fade
+          - keyboard ←/→ / Esc
+          - desktop left/right click zones
+          - pointer drag (unified desktop + mobile) with 80px
+            commit threshold
+          - photo preload (prev/current/next + 2 further when
+            network allows)
+          - URL pushState → /p/{key}, browser Back/Forward syncs
+          - likes/comments Map cache (no refetch flash on switch)
+          - aspect-ratio reservation + retry on image error
+          - photo list = visiblePhotos, so timeline filter and
+            search query are respected.
+          See components/PhotoViewer.tsx for full implementation. */}
       {selected && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm"
-          onClick={() => setSelected(null)}
-        >
-          <div
-            className="relative max-h-[90vh] w-full max-w-4xl overflow-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={() => setSelected(null)}
-              className="absolute -top-10 right-0 text-sm text-white/60 hover:text-white"
-            >
-              ✕ 关闭 (ESC)
-            </button>
-            {/* Frank #7187: swipe container — wraps the image so touch
-                gestures on the image track deltaX and translate it
-                via translateX. CSS transition uses iOS-like easing
-                (cubic-bezier(0.25, 0.46, 0.45, 0.94)) for the snap-
-                back / commit animation. The prev/next buttons are
-                positioned absolute relative to this wrapper. */}
-            <div
-              className="relative touch-pan-y"
-              onTouchStart={handleTouchStart}
-              onTouchMove={handleTouchMove}
-              onTouchEnd={handleTouchEnd}
-              style={{
-                transform: `translateX(${animOffset}px)`,
-                transition:
-                  animOffset === 0
-                    ? 'transform 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94)'
-                    : 'none',
-              }}
-            >
-              {/* Frank #7187: frosted-glass prev button (left side).
-                  Rendered only when a cluster context exists AND
-                  we're not at the first photo in the cluster. */}
-              {selectedCluster &&
-                selectedClusterIndex > 0 && (
-                  <button
-                    type="button"
-                    onClick={goPrev}
-                    className="absolute left-2 top-1/2 z-10 -translate-y-1/2 flex h-12 w-12 items-center justify-center rounded-full border border-white/30 bg-white/20 text-2xl text-white shadow-lg backdrop-blur-md transition hover:bg-white/30"
-                    title="上一张"
-                  >
-                    ‹
-                  </button>
-                )}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={selected.public_url}
-              alt={selected.filename}
-              className="max-h-[75vh] w-full rounded object-contain"
-            />
-              {/* Frank #7187: frosted-glass next button (right side).
-                  Rendered only when a cluster context exists AND
-                  we're not at the last photo in the cluster. */}
-              {selectedCluster &&
-                selectedClusterIndex < selectedCluster.length - 1 && (
-                  <button
-                    type="button"
-                    onClick={goNext}
-                    className="absolute right-2 top-1/2 z-10 -translate-y-1/2 flex h-12 w-12 items-center justify-center rounded-full border border-white/30 bg-white/20 text-2xl text-white shadow-lg backdrop-blur-md transition hover:bg-white/30"
-                    title="下一张"
-                  >
-                    ›
-                  </button>
-                )}
-            </div>
-            <div className="mt-4 space-y-1 text-sm text-white/70">
-              <p className="text-white">{selected.filename}</p>
-              {selected.taken_at && (
-                <p>
-                  📅 {new Date(selected.taken_at).toLocaleString('zh-CN')}
-                </p>
-              )}
-              {selected.location_name ? (
-                <p>
-                  📍 {selected.location_name}
-                </p>
-              ) : selected.lat != null && selected.lng != null ? (
-                <p>
-                  � {selected.lat.toFixed(2)}, {selected.lng.toFixed(2)}
-                </p>
-              ) : null}
-              {(selected.camera_make || selected.camera_model) && (
-                <p>
-                  📷{' '}
-                  {[selected.camera_make, selected.camera_model]
-                    .filter(Boolean)
-                    .join(' ')}
-                </p>
-              )}
-              {selected.categories && selected.categories.length > 0 && (
-                <p>🏷️ {selected.categories.join(' · ')}</p>
-              )}
-
-              {/* §3 of 需求0827 — like button + count. Disabled
-                  until signed in; click toggles via POST
-                  /api/photos/[key]/like with optimistic update +
-                  server reconcile. */}
-              <div className="mt-3 flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={toggleLike}
-                  disabled={!sessionUserId || likePending}
-                  aria-pressed={userLiked}
-                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                    userLiked
-                      ? 'border-rose-400/60 bg-rose-500/20 text-rose-200 hover:bg-rose-500/30'
-                      : 'border-white/20 bg-white/5 text-white/70 hover:border-white/40 hover:text-white'
-                  }`}
-                  title={
-                    sessionUserId
-                      ? userLiked
-                        ? '取消点赞'
-                        : '点赞'
-                      : '登录后点赞'
-                  }
-                >
-                  <span aria-hidden="true">{userLiked ? '❤️' : '🤍'}</span>
-                  <span className="tabular-nums">{likeCount}</span>
-                </button>
-                {!sessionUserId && (
-                  <span className="text-xs text-white/40">登录后点赞</span>
-                )}
-              </div>
-
-              <p className="break-all">
-                🔗{' '}
-                <a
-                  href={selected.public_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sky-300 underline"
-                >
-                  {selected.public_url}
-                </a>
-              </p>
-              {/* Frank #7129 #3: removed the stale "(分类编辑 + 删除
-                  功能下次迭代)" disclaimer — per-photo edit modal
-                  now exists (Frank #7117 #2 / commit bf00ef1 in
-                  /admin/photos). The detail modal itself still
-                  doesn't have inline edit (admin-only editing lives
-                  in /admin/photos), but the disclaimer framed it
-                  as "next iteration" which is no longer accurate. */}
-            </div>
-
-            {/* §4 of 需求0827 — comments section. List (server-stored,
-                HTML-escaped at the API → rendered with
-                dangerouslySetInnerHTML so newlines work but no XSS
-                slips through) + per-comment delete for owner/admin +
-                new-comment form (auth-gated, maxLength 500 matching
-                the server cap). */}
-            <div className="mt-6 border-t border-white/10 pt-4">
-              <h4 className="mb-3 text-sm font-medium text-white/80">
-                💬 评论{' '}
-                <span className="text-white/40">({comments.length})</span>
-              </h4>
-
-              <div className="mb-4 space-y-2">
-                {commentsLoading && comments.length === 0 ? (
-                  <p className="text-xs text-white/40">加载中…</p>
-                ) : comments.length === 0 ? (
-                  <p className="text-xs text-white/40">还没有评论</p>
-                ) : (
-                  comments.map((c) => (
-                    <div
-                      key={c.id}
-                      className="rounded border border-white/10 bg-white/[0.02] p-2"
-                    >
-                      <div className="mb-1 flex items-center justify-between text-xs">
-                        <span className="text-white/40">
-                          {c.user_id === sessionUserId
-                            ? '你'
-                            : `user_${c.user_id.slice(0, 4)}`}
-                        </span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-white/30 tabular-nums">
-                            {new Date(c.created_at).toLocaleString(
-                              'zh-CN',
-                            )}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => deleteComment(c.id)}
-                            className="text-rose-300/60 transition hover:text-rose-300"
-                            title="删除"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      </div>
-                      <p
-                        className="whitespace-pre-wrap break-words text-sm text-white/80"
-                        // Server HTML-escapes content in
-                        // /api/photos/[key]/comments POST (infra/007 CHECK
-                        // + sanitizeContent). Stored string is safe to
-                        // render directly.
-                        dangerouslySetInnerHTML={{ __html: c.content }}
-                      />
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {commentError && (
-                <p className="mb-2 rounded border border-rose-500/30 bg-rose-900/20 p-2 text-xs text-rose-300">
-                  {commentError}
-                </p>
-              )}
-
-              {sessionUserId ? (
-                <div className="flex items-end gap-2">
-                  <textarea
-                    value={newCommentText}
-                    onChange={(e) => setNewCommentText(e.target.value)}
-                    rows={2}
-                    maxLength={500}
-                    placeholder="写下你的评论…"
-                    className="flex-1 resize-none rounded border border-white/15 bg-white/5 px-3 py-2 text-sm text-white placeholder-white/40 focus:border-white/40 focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={postComment}
-                    disabled={
-                      commentPending ||
-                      newCommentText.trim().length === 0
-                    }
-                    className="rounded bg-white px-3 py-2 text-sm font-medium text-black transition hover:bg-white/90 disabled:opacity-50"
-                  >
-                    {commentPending ? '发布中…' : '发布'}
-                  </button>
-                </div>
-              ) : (
-                <p className="text-xs text-white/40">
-                  登录后可以发表评论。
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
+        <PhotoViewer
+          photos={visiblePhotos}
+          initialPhoto={selected}
+          locale={locale}
+          isSignedIn={Boolean(sessionUserId)}
+          sessionUserId={sessionUserId}
+          onClose={() => setSelected(null)}
+        />
       )}
 
       {/* Cluster modal — opened when the user clicks a multi-photo
@@ -971,10 +528,11 @@ export function HomeGallery({ locale }: { locale: Locale }) {
                   type="button"
                   onClick={() => {
                     setClusterOpen(false);
-                    // Frank #7187: remember the full cluster so
-                    // the detail modal's prev/next can iterate
-                    // through siblings at the same location.
-                    setSelectedCluster(clusterPhotos);
+                    // Frank #7509: the PhotoViewer navigates
+                    // visiblePhotos chronologically; cluster
+                    // photos are adjacent in time at the same
+                    // location, so this naturally walks through
+                    // them.
                     setSelected(p);
                   }}
                   className="aspect-square overflow-hidden rounded border border-white/10 transition hover:border-white/40"

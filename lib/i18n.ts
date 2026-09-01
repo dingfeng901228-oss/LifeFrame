@@ -189,6 +189,80 @@ const dict: Dict = {
     zh: '退出中…',
     ja: 'サインアウト中…',
   },
+
+  // ─── Photo detail viewer (Frank #7509) ──────────────────────
+  'viewer.label': {
+    zh: '照片详情查看器',
+    ja: '写真ビューア',
+  },
+  'viewer.close': {
+    zh: '关闭',
+    ja: '閉じる',
+  },
+  'viewer.prev': {
+    zh: '上一张',
+    ja: '前の写真',
+  },
+  'viewer.next': {
+    zh: '下一张',
+    ja: '次の写真',
+  },
+  'viewer.like': {
+    zh: '点赞',
+    ja: 'いいね',
+  },
+  'viewer.unlike': {
+    zh: '取消点赞',
+    ja: 'いいねを取り消す',
+  },
+  'viewer.likeSignInHint': {
+    zh: '登录后点赞',
+    ja: 'ログインしていいね',
+  },
+  'viewer.comments': {
+    zh: '评论',
+    ja: 'コメント',
+  },
+  'viewer.noComments': {
+    zh: '还没有评论',
+    ja: 'まだコメントはありません',
+  },
+  'viewer.loading': {
+    zh: '加载中…',
+    ja: '読み込み中…',
+  },
+  'viewer.you': {
+    zh: '你',
+    ja: 'あなた',
+  },
+  'viewer.delete': {
+    zh: '删除',
+    ja: '削除',
+  },
+  'viewer.commentPlaceholder': {
+    zh: '写下你的评论…',
+    ja: 'コメントを書く…',
+  },
+  'viewer.commentSignInHint': {
+    zh: '登录后可以发表评论。',
+    ja: 'ログインするとコメントできます。',
+  },
+  'viewer.post': {
+    zh: '发布',
+    ja: '投稿',
+  },
+  'viewer.posting': {
+    zh: '发布中…',
+    ja: '投稿中…',
+  },
+  'viewer.unableToLoad': {
+    zh: '无法加载照片',
+    ja: '写真を読み込めません',
+  },
+  'viewer.retry': {
+    zh: '重试',
+    ja: '再試行',
+  },
 };
 
 export function t(
