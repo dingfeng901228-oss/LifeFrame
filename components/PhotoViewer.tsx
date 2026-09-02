@@ -780,7 +780,7 @@ export function PhotoViewer({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-black/90 backdrop-blur-sm"
       onClick={handleClose}
       role="dialog"
       aria-modal="true"
@@ -792,9 +792,12 @@ export function PhotoViewer({
           (Header / Photo Stage / Information Panel). h-[100dvh]
           (dynamic viewport height) accounts for mobile browser
           chrome collapsing; env(safe-area-inset-top) avoids notch.
-          No fixed max-height — Photo Stage is flex-1 below. */}
+          No fixed max-height — Photo Stage is flex-1 below.
+          Frank #7703: overflow-hidden on outer + inner so a tall
+          Information Panel can NEVER bleed into / shrink Photo
+          Stage; inner also flex-col so flex children stack safely. */}
       <div
-        className="relative mx-auto flex h-[100dvh] w-full max-w-4xl flex-col"
+        className="relative mx-auto flex h-[100dvh] w-full max-w-4xl flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
         style={{ paddingTop: 'env(safe-area-inset-top)' }}
       >
@@ -975,10 +978,18 @@ export function PhotoViewer({
             scroll, NEVER compresses Photo Stage above. shrink-0
             keeps it at intrinsic size; flex-1 on Photo Stage handles
             the rest. pb uses calc(24px + env(safe-area-inset-bottom))
-            for iPhone Home Indicator / Android nav bar. */}
+            for iPhone Home Indicator / Android nav bar.
+            Frank #7703: max-h-[60dvh] (NOT vh) + overflow-y-auto
+            so a tall panel (filename + metadata + like + comments
+            textarea + safe-area pb) CAN'T push Photo Stage below
+            40% viewport. 60dvh on landscape (~460px on 768h) leaves
+            Photo Stage with at least ~300px; portrait stays ~50/50. */}
         <div
-          className="shrink-0 border-t border-white/10 bg-black/40 backdrop-blur-md"
-          style={{ paddingBottom: 'calc(24px + env(safe-area-inset-bottom))' }}
+          className="shrink-0 overflow-y-auto border-t border-white/10 bg-black/40 backdrop-blur-md"
+          style={{
+            paddingBottom: 'calc(24px + env(safe-area-inset-bottom))',
+            maxHeight: '60dvh',
+          }}
         >
         {/* Photo Info — wrapped with key=currentPhoto.key so it
             fades in on each photo change (subtle, not whole page). */}
