@@ -263,6 +263,19 @@ const dict: Dict = {
     zh: '重试',
     ja: '再試行',
   },
+  // Frank #7668 doc/0902.md — More Menu (⋯) hides raw sharing URL.
+  'viewer.more': {
+    zh: '更多',
+    ja: 'その他',
+  },
+  'viewer.openOriginal': {
+    zh: '打开原图',
+    ja: '原画を開く',
+  },
+  'viewer.copyShareLink': {
+    zh: '复制分享链接',
+    ja: '共有リンクをコピー',
+  },
 };
 
 export function t(

@@ -199,6 +199,14 @@ export function PhotoViewer({
   // retryNonce forces the <img> to remount and refetch.
   const [retryNonce, setRetryNonce] = useState(0);
 
+  // ── More Menu state ───────────────────────────────────────────
+  // Frank #7668 doc/0902.md: hide raw sharing URL behind a ⋯ menu.
+  // The menu opens on the trigger click, closes on outside click /
+  // Escape / menu-item click. Outside-click uses mousedown (not
+  // click) so we close before any focus / navigation fires.
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+
   // ── URL history state ───────────────────────────────────────────
   // prevUrlRef = the URL before the viewer pushed its first entry.
   // Restored on close so Back from /welcome (after close) doesn't go
@@ -738,7 +746,7 @@ export function PhotoViewer({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm"
       onClick={handleClose}
       role="dialog"
       aria-modal="true"
@@ -746,12 +754,20 @@ export function PhotoViewer({
     >
       <style>{VIEWER_STYLES}</style>
 
+      {/* Frank #7668 doc/0902.md: 3-tier full-viewport layout
+          (Header / Photo Stage / Information Panel). h-[100dvh]
+          (dynamic viewport height) accounts for mobile browser
+          chrome collapsing; env(safe-area-inset-top) avoids notch.
+          No fixed max-height — Photo Stage is flex-1 below. */}
       <div
-        className="relative flex max-h-[90vh] w-full max-w-4xl flex-col"
+        className="relative mx-auto flex h-[100dvh] w-full max-w-4xl flex-col"
         onClick={(e) => e.stopPropagation()}
+        style={{ paddingTop: 'env(safe-area-inset-top)' }}
       >
-        {/* Top bar: close + position indicator */}
-        <div className="mb-2 flex items-center justify-between text-xs text-white/60">
+        {/* Header (fixed-height). Counter + Close, persists across
+            photo changes. shrink-0 prevents the flex-1 Photo Stage
+            below from stealing header space. */}
+        <div className="shrink-0 flex items-center justify-between px-4 py-2 text-xs text-white/60">
           <span className="tabular-nums">
             {currentIndex >= 0
               ? `${currentIndex + 1} / ${photos.length}`
@@ -766,21 +782,16 @@ export function PhotoViewer({
           </button>
         </div>
 
-        {/* Frank #7630: refactored from grid to flex-center per bug
-            report. The old grid + img `max-h-[75vh] max-w-full` had
-            a bottom-cut bug on wide-but-short viewports because a
-            flex item's default `min-height: auto` (== intrinsic) won
-            over `max-height`, so the img rendered at intrinsic size
-            and the container's overflow-hidden clipped the bottom.
-            Fix: container is flex-centered, img uses `max-h-full`
-            (relative to parent) + `min-h-0` (overrides the flex-item
-            default), so it actually shrinks to fit. minHeight 320
-            fallback preserved. */}
+        {/* Frank #7668 doc/0902.md: Photo Stage fills the remaining
+            viewport between Header and Information Panel.
+            flex-1 (grow to fill) + min-h-0 (override flex-item
+            default min-height: auto) means it shrinks/grows with
+            viewport, never gets compressed by Information content.
+            minHeight 320 is the sane fallback before first img load. */}
         <div
-          className="relative flex w-full items-center justify-center select-none overflow-hidden rounded-lg bg-black/30 touch-none"
+          className="relative flex w-full flex-1 min-h-0 items-center justify-center select-none overflow-hidden bg-black/30 touch-none"
           style={{
             minHeight: '320px',
-            maxHeight: '75vh',
           }}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
@@ -926,12 +937,20 @@ export function PhotoViewer({
           </button>
         </div>
 
-        {/* Metadata + like + comment — wrapped with key=
-            currentPhoto.key so the whole block fades in on each
-            photo change (subtle, not the whole page). */}
+        {/* Frank #7668 doc/0902.md: Information Panel — independent
+            scroll, NEVER compresses Photo Stage above. shrink-0
+            keeps it at intrinsic size; flex-1 on Photo Stage handles
+            the rest. pb uses calc(24px + env(safe-area-inset-bottom))
+            for iPhone Home Indicator / Android nav bar. */}
+        <div
+          className="shrink-0 border-t border-white/10 bg-black/40 backdrop-blur-md"
+          style={{ paddingBottom: 'calc(24px + env(safe-area-inset-bottom))' }}
+        >
+        {/* Photo Info — wrapped with key=currentPhoto.key so it
+            fades in on each photo change (subtle, not whole page). */}
         <div
           key={`meta-${currentPhoto.key}`}
-          className="pv-meta-fade mt-4 space-y-1 text-sm text-white/70"
+          className="pv-meta-fade space-y-1 px-4 pt-3 text-sm text-white/70"
         >
           <p className="truncate text-white">{currentPhoto.filename}</p>
           {takenAt && <p>📅 {takenAt}</p>}
@@ -984,26 +1003,110 @@ export function PhotoViewer({
             )}
           </div>
 
-          <p className="break-all">
-            🔗{' '}
-            <a
-              href={`/p/${encodeURIComponent(currentPhoto.key)}`}
-              className="text-sky-300 underline"
-              onClick={(e) => {
-                // The viewer already updates history to /p/<key>;
-                // clicking the link shouldn't reload the page.
-                e.preventDefault();
-              }}
-            >
-              {`/p/${currentPhoto.key}`}
-            </a>
-          </p>
         </div>
 
-        {/* Comments section */}
+        {/* Social row — Like + More Menu (⋯).
+            Frank #7668 doc/0902.md: raw URL hidden here, "打开原图"
+            lives in the More Menu. */}
+        <div className="flex flex-wrap items-center gap-3 px-4 pt-2 pb-1">
+          <button
+            type="button"
+            onClick={toggleLike}
+            disabled={!isSignedIn || likePending}
+            aria-pressed={userLiked}
+            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition disabled:cursor-not-allowed disabled:opacity-50 ${
+              userLiked
+                ? 'border-rose-400/60 bg-rose-500/20 text-rose-200 hover:bg-rose-500/30'
+                : 'border-white/20 bg-white/5 text-white/70 hover:border-white/40 hover:text-white'
+            }`}
+            title={
+              isSignedIn
+                ? userLiked
+                  ? t(locale, 'viewer.unlike')
+                  : t(locale, 'viewer.like')
+                : t(locale, 'viewer.likeSignInHint')
+            }
+          >
+            <span aria-hidden="true">{userLiked ? '❤️' : '🤍'}</span>
+            <span className="tabular-nums">{likeCount}</span>
+          </button>
+          {!isSignedIn && (
+            <span className="text-xs text-white/40">
+              {t(locale, 'viewer.likeSignInHint')}
+            </span>
+          )}
+
+          {/* More Menu trigger — pushes to far right of the social row.
+              Frank #7668: hides raw URL behind this; menu contains
+              "打开原图" + "复制分享链接". */}
+          <button
+            type="button"
+            onClick={() => setMoreMenuOpen((v) => !v)}
+            aria-expanded={moreMenuOpen}
+            aria-haspopup="menu"
+            aria-label={t(locale, 'viewer.more')}
+            className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-white/5 text-base leading-none text-white/70 transition hover:border-white/40 hover:bg-white/10 hover:text-white"
+          >
+            ⋯
+          </button>
+          {moreMenuOpen && (
+            <div
+              ref={moreMenuRef}
+              role="menu"
+              className="absolute right-4 z-30 mt-1 min-w-[180px] rounded-lg border border-white/15 bg-black/85 py-1 shadow-xl backdrop-blur-md"
+              style={{ marginTop: '7.5rem' }}
+            >
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  window.open(
+                    `/p/${encodeURIComponent(currentPhoto.key)}`,
+                    '_blank',
+                    'noopener,noreferrer',
+                  );
+                  setMoreMenuOpen(false);
+                }}
+                className="block w-full px-3 py-2 text-left text-sm text-white/85 transition hover:bg-white/10"
+              >
+                {t(locale, 'viewer.openOriginal')}
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(
+                      `${window.location.origin}/p/${encodeURIComponent(currentPhoto.key)}`,
+                    );
+                  } catch {
+                    // Clipboard API blocked (insecure context, perms).
+                    // Fall back to a hidden textarea selection.
+                    const ta = document.createElement('textarea');
+                    ta.value = `${window.location.origin}/p/${encodeURIComponent(currentPhoto.key)}`;
+                    ta.style.position = 'fixed';
+                    ta.style.opacity = '0';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    try { document.execCommand('copy'); } catch {}
+                    document.body.removeChild(ta);
+                  }
+                  setMoreMenuOpen(false);
+                }}
+                className="block w-full px-3 py-2 text-left text-sm text-white/85 transition hover:bg-white/10"
+              >
+                {t(locale, 'viewer.copyShareLink')}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Comments — internal scroll (max-h-60 = 15rem ≈ 6 lines),
+            still inside Information Panel so Photo Stage is unaffected
+            by comment count. Frank #7668. */}
         <div
           key={`comments-${currentPhoto.key}`}
-          className="pv-meta-fade mt-6 border-t border-white/10 pt-4"
+          className="pv-meta-fade border-t border-white/10 px-4 pt-3"
         >
           <h4 className="mb-3 text-sm font-medium text-white/80">
             💬 {t(locale, 'viewer.comments')}{' '}
