@@ -766,16 +766,18 @@ export function PhotoViewer({
           </button>
         </div>
 
-        {/* Photo stage — grid layout, imgs overlap via grid-area: 1/1.
-            Container sizes from the largest grid item, capped by
-            maxHeight 75vh. NO fixed aspectRatio on the container:
-            the previous 3/2 default forced non-3:2 photos (e.g. 4:3
-            landscape, 3:4 portrait) to render at thumbnail size via
-            object-contain inside the wrong-ratio box (Frank #7545).
-            minHeight 320 gives a sane fallback before the first img
-            natural size resolves. */}
+        {/* Frank #7630: refactored from grid to flex-center per bug
+            report. The old grid + img `max-h-[75vh] max-w-full` had
+            a bottom-cut bug on wide-but-short viewports because a
+            flex item's default `min-height: auto` (== intrinsic) won
+            over `max-height`, so the img rendered at intrinsic size
+            and the container's overflow-hidden clipped the bottom.
+            Fix: container is flex-centered, img uses `max-h-full`
+            (relative to parent) + `min-h-0` (overrides the flex-item
+            default), so it actually shrinks to fit. minHeight 320
+            fallback preserved. */}
         <div
-          className="relative grid grid-cols-1 w-full select-none overflow-hidden rounded-lg bg-black/30 touch-none"
+          className="relative flex w-full items-center justify-center select-none overflow-hidden rounded-lg bg-black/30 touch-none"
           style={{
             minHeight: '320px',
             maxHeight: '75vh',
@@ -810,11 +812,8 @@ export function PhotoViewer({
           {leavingPhoto && (
             <div
               key={`leaving-wrap-${leavingPhoto.photo.key}`}
+              className="absolute inset-0 flex items-center justify-center"
               style={{
-                gridArea: '1 / 1',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
                 transform: `translate3d(${dragOffset}px, 0, 0)`,
                 transition: isDragging
                   ? 'none'
@@ -828,7 +827,7 @@ export function PhotoViewer({
                 alt=""
                 aria-hidden="true"
                 draggable={false}
-                className={`max-h-[75vh] max-w-full object-contain ${
+                className={`max-w-full max-h-full min-h-0 w-auto h-auto object-contain ${
                   leavingPhoto.direction === 1
                     ? 'pv-photo-out-left'
                     : 'pv-photo-out-right'
@@ -839,11 +838,8 @@ export function PhotoViewer({
           {/* Current photo wrapper */}
           <div
             key={`current-wrap-${currentPhoto.key}-${retryNonce}`}
+            className="flex items-center justify-center"
             style={{
-              gridArea: '1 / 1',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
               transform: `translate3d(${dragOffset}px, 0, 0)`,
               transition: isDragging
                 ? 'none'
@@ -856,7 +852,7 @@ export function PhotoViewer({
               src={photoImageUrl(currentPhoto, 'full')}
               alt={currentPhoto.filename}
               draggable={false}
-              className={`max-h-[75vh] max-w-full object-contain ${
+              className={`max-w-full max-h-full min-h-0 w-auto h-auto object-contain ${
                 direction === 1
                   ? 'pv-photo-in-right'
                   : direction === -1
