@@ -379,6 +379,40 @@ export function PhotoViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPhoto.key]);
 
+  // ── More Menu: outside-click + Escape close (Frank #7668) ─────
+  // The trigger button toggles state. This effect closes the menu
+  // when the user clicks anywhere outside the dropdown, presses
+  // Escape, or scrolls. Mousedown (not click) so we close before
+  // any focus / navigation fires on the underlying element.
+  useEffect(() => {
+    if (!moreMenuOpen) return;
+    function onMouseDown(e: MouseEvent) {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      // Inside the dropdown → keep open.
+      if (moreMenuRef.current && moreMenuRef.current.contains(target)) {
+        return;
+      }
+      // The trigger button itself → keep open (its own onClick toggles).
+      if (target.closest(`[aria-label="${t(locale, 'viewer.more')}"]`)) {
+        return;
+      }
+      setMoreMenuOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        setMoreMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [moreMenuOpen, locale]);
+
   // ── Pointer drag (unified desktop + mobile) ────────────────────
 
   const onPointerDown = useCallback(
@@ -973,35 +1007,8 @@ export function PhotoViewer({
             <p>🏷️ {currentPhoto.categories.join(' · ')}</p>
           )}
 
-          {/* Like row */}
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={toggleLike}
-              disabled={!isSignedIn || likePending}
-              aria-pressed={userLiked}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                userLiked
-                  ? 'border-rose-400/60 bg-rose-500/20 text-rose-200 hover:bg-rose-500/30'
-                  : 'border-white/20 bg-white/5 text-white/70 hover:border-white/40 hover:text-white'
-              }`}
-              title={
-                isSignedIn
-                  ? userLiked
-                    ? t(locale, 'viewer.unlike')
-                    : t(locale, 'viewer.like')
-                  : t(locale, 'viewer.likeSignInHint')
-              }
-            >
-              <span aria-hidden="true">{userLiked ? '❤️' : '🤍'}</span>
-              <span className="tabular-nums">{likeCount}</span>
-            </button>
-            {!isSignedIn && (
-              <span className="text-xs text-white/40">
-                {t(locale, 'viewer.likeSignInHint')}
-              </span>
-            )}
-          </div>
+          {/* Like moved to Social row below (Frank #7668 — Like
+              belongs in Social, not Photo Info). */}
 
         </div>
 
@@ -1183,6 +1190,7 @@ export function PhotoViewer({
               {t(locale, 'viewer.commentSignInHint')}
             </p>
           )}
+        </div>
         </div>
       </div>
     </div>
