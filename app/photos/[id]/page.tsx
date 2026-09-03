@@ -159,7 +159,7 @@ export default async function PhotoDetailPage({
             href="/"
             className="text-sm text-black/60 transition hover:text-black dark:text-white/60 dark:hover:text-white"
           >
-            在 LifeFrame 上创建你自己的照片博物馆 →
+            在 LifeFrame 地球仪上，发现更多生活瞬间 →
           </Link>
         </footer>
       </article>
