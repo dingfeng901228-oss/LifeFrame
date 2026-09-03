@@ -1,5 +1,4 @@
 import { notFound, redirect } from 'next/navigation';
-import { createClient } from '@supabase/supabase-js';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 import { photoImageUrl } from '@/lib/photo-url';
 import Link from 'next/link';
@@ -47,14 +46,16 @@ export default async function PublicPhotoPage({
   params: Promise<{ key: string }>;
 }) {
   const { key } = await params;
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !anonKey) {
-    notFound();
-  }
-
-  const supabase = createClient(url, anonKey);
-  const { data: photo } = await supabase
+  // Frank #7706: use the cookie-bound server client for the initial SELECT.
+  // The previous anon client (createClient) didn't read cookies, so RLS in
+  // infra/005 always saw the request as `anon` and filtered out person-
+  // category photos before our app-level visibility check could run —
+  // /p/[key] 404'd even for the owner. The server client reads the JWT
+  // cookie; for an authenticated Frank the "Authenticated reads all
+  // photos" policy applies and the photo loads. Anon visitors stay
+  // gated by the anon policy (intent of migration 005 preserved).
+  const supabaseServer = await createSupabaseServerClient();
+  const { data: photo } = await supabaseServer
     .from('photos')
     .select(
       'key, user_id, public_url, thumbnail_url, filename, taken_at, location_name, lat, lng, visibility, categories, camera_make, camera_model',
