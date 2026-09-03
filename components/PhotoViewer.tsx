@@ -46,6 +46,7 @@ import { t, type Locale } from '@/lib/i18n';
 // ─── Types ────────────────────────────────────────────────────────
 
 export type PhotoRow = {
+  id: string;
   key: string;
   public_url: string;
   thumbnail_url: string | null;
@@ -248,7 +249,7 @@ export function PhotoViewer({
         window.history.pushState(
           { lv: true, key: target.key },
           '',
-          `/p/${encodeURIComponent(target.key)}`,
+          `/photos/${target.id}`,
         );
       }
 
@@ -289,7 +290,7 @@ export function PhotoViewer({
     window.history.pushState(
       { lv: true, key: initialPhoto.key },
       '',
-      `/p/${encodeURIComponent(initialPhoto.key)}`,
+      `/photos/${initialPhoto.id}`,
     );
 
     return () => {
@@ -511,17 +512,17 @@ export function PhotoViewer({
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const key = currentPhoto.key;
-    if (likesByPhoto.get(key)?.loaded) return;
+    const id = currentPhoto.id;
+    if (likesByPhoto.get(id)?.loaded) return;
 
     let cancelled = false;
-    fetch(`/api/photos/${encodeURIComponent(key)}/likes`)
+    fetch(`/api/photos/${id}/likes`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`likes ${r.status}`))))
       .then((data: { count?: number; userLiked?: boolean }) => {
         if (cancelled) return;
         setLikesByPhoto((prev) => {
           const next = new Map(prev);
-          next.set(key, {
+          next.set(id, {
             count: data.count ?? 0,
             userLiked: Boolean(data.userLiked),
             loaded: true,
@@ -536,14 +537,14 @@ export function PhotoViewer({
         // navigation back.
         setLikesByPhoto((prev) => {
           const next = new Map(prev);
-          next.set(key, { count: 0, userLiked: false, loaded: true });
+          next.set(id, { count: 0, userLiked: false, loaded: true });
           return next;
         });
       });
     return () => {
       cancelled = true;
     };
-  }, [currentPhoto.key, likesByPhoto]);
+  }, [currentPhoto.id, likesByPhoto]);
 
   // Background prefetch likes/comments for adjacent photos so a
   // rapid next/prev doesn't have to wait for a round-trip.
@@ -553,14 +554,14 @@ export function PhotoViewer({
     if (prevPhoto) adjacent.push(prevPhoto);
     if (nextPhoto) adjacent.push(nextPhoto);
     for (const photo of adjacent) {
-      const k = photo.key;
-      if (!likesByPhoto.get(k)?.loaded) {
-        fetch(`/api/photos/${encodeURIComponent(k)}/likes`)
+      const id = photo.id;
+      if (!likesByPhoto.get(id)?.loaded) {
+        fetch(`/api/photos/${id}/likes`)
           .then((r) => (r.ok ? r.json() : Promise.reject()))
           .then((data: { count?: number; userLiked?: boolean }) => {
             setLikesByPhoto((prev) => {
               const next = new Map(prev);
-              next.set(k, {
+              next.set(id, {
                 count: data.count ?? 0,
                 userLiked: Boolean(data.userLiked),
                 loaded: true,
@@ -571,18 +572,18 @@ export function PhotoViewer({
           .catch(() => {
             setLikesByPhoto((prev) => {
               const next = new Map(prev);
-              next.set(k, { count: 0, userLiked: false, loaded: true });
+              next.set(id, { count: 0, userLiked: false, loaded: true });
               return next;
             });
           });
       }
-      if (!commentsByPhoto.get(k)?.loaded) {
-        fetch(`/api/photos/${encodeURIComponent(k)}/comments`)
+      if (!commentsByPhoto.get(id)?.loaded) {
+        fetch(`/api/photos/${id}/comments`)
           .then((r) => (r.ok ? r.json() : Promise.reject()))
           .then((data: { comments?: CommentRow[] }) => {
             setCommentsByPhoto((prev) => {
               const next = new Map(prev);
-              next.set(k, {
+              next.set(id, {
                 items: data.comments ?? [],
                 loaded: true,
               });
@@ -592,7 +593,7 @@ export function PhotoViewer({
           .catch(() => {
             setCommentsByPhoto((prev) => {
               const next = new Map(prev);
-              next.set(k, { items: [], loaded: true });
+              next.set(id, { items: [], loaded: true });
               return next;
             });
           });
@@ -603,24 +604,24 @@ export function PhotoViewer({
     // changes which adjacent photos to prefetch), not on every
     // cache update.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPhoto.key, prevPhoto?.key, nextPhoto?.key]);
+  }, [currentPhoto.id, prevPhoto?.id, nextPhoto?.id]);
 
   // ── Fetch comments for current photo ────────────────────────────
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const key = currentPhoto.key;
-    if (commentsByPhoto.get(key)?.loaded) return;
+    const id = currentPhoto.id;
+    if (commentsByPhoto.get(id)?.loaded) return;
 
     let cancelled = false;
     setCommentsByPhoto((prev) => {
       // Mark as in-flight (loaded: false) so the UI shows a loading
       // state until the response lands.
       const next = new Map(prev);
-      if (!next.has(key)) next.set(key, { items: [], loaded: false });
+      if (!next.has(id)) next.set(id, { items: [], loaded: false });
       return next;
     });
-    fetch(`/api/photos/${encodeURIComponent(key)}/comments`)
+    fetch(`/api/photos/${id}/comments`)
       .then((r) =>
         r.ok ? r.json() : Promise.reject(new Error(`comments ${r.status}`)),
       )
@@ -628,7 +629,7 @@ export function PhotoViewer({
         if (cancelled) return;
         setCommentsByPhoto((prev) => {
           const next = new Map(prev);
-          next.set(key, {
+          next.set(id, {
             items: data.comments ?? [],
             loaded: true,
           });
@@ -639,14 +640,14 @@ export function PhotoViewer({
         if (cancelled) return;
         setCommentsByPhoto((prev) => {
           const next = new Map(prev);
-          next.set(key, { items: [], loaded: true });
+          next.set(id, { items: [], loaded: true });
           return next;
         });
       });
     return () => {
       cancelled = true;
     };
-  }, [currentPhoto.key, commentsByPhoto]);
+  }, [currentPhoto.id, commentsByPhoto]);
 
   // ── Like / comment handlers ─────────────────────────────────────
 
@@ -655,14 +656,14 @@ export function PhotoViewer({
 
   async function toggleLike() {
     if (!isSignedIn || likePending || !currentPhoto) return;
-    const key = currentPhoto.key;
+    const id = currentPhoto.id;
     setLikePending(true);
-    const before = likesByPhoto.get(key);
+    const before = likesByPhoto.get(id);
     const wasLiked = before?.userLiked ?? false;
     // Optimistic flip.
     setLikesByPhoto((prev) => {
       const next = new Map(prev);
-      next.set(key, {
+      next.set(id, {
         count: (before?.count ?? 0) + (wasLiked ? -1 : 1),
         userLiked: !wasLiked,
         loaded: true,
@@ -671,14 +672,14 @@ export function PhotoViewer({
     });
     try {
       const res = await fetch(
-        `/api/photos/${encodeURIComponent(key)}/like`,
+        `/api/photos/${id}/like`,
         { method: 'POST' },
       );
       if (!res.ok) throw new Error(`like ${res.status}`);
       const data = (await res.json()) as { liked?: boolean; count?: number };
       setLikesByPhoto((prev) => {
         const next = new Map(prev);
-        next.set(key, {
+        next.set(id, {
           count: data.count ?? (before?.count ?? 0),
           userLiked: Boolean(data.liked),
           loaded: true,
@@ -689,7 +690,7 @@ export function PhotoViewer({
       // Revert.
       setLikesByPhoto((prev) => {
         const next = new Map(prev);
-        next.set(key, {
+        next.set(id, {
           count: before?.count ?? 0,
           userLiked: wasLiked,
           loaded: true,
@@ -708,7 +709,7 @@ export function PhotoViewer({
     setCommentError(null);
     try {
       const res = await fetch(
-        `/api/photos/${encodeURIComponent(currentPhoto.key)}/comments`,
+        `/api/photos/${currentPhoto.id}/comments`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -723,8 +724,8 @@ export function PhotoViewer({
       if (data.comment) {
         setCommentsByPhoto((prev) => {
           const next = new Map(prev);
-          const cur = prev.get(currentPhoto.key);
-          next.set(currentPhoto.key, {
+          const cur = prev.get(currentPhoto.id);
+          next.set(currentPhoto.id, {
             items: [...(cur?.items ?? []), data.comment as CommentRow],
             loaded: true,
           });
@@ -739,11 +740,11 @@ export function PhotoViewer({
     }
   }
 
-  async function deleteComment(id: string) {
+  async function deleteComment(commentId: string) {
     if (!isSignedIn || !currentPhoto) return;
     try {
       const res = await fetch(
-        `/api/photos/${encodeURIComponent(currentPhoto.key)}/comments/${encodeURIComponent(id)}`,
+        `/api/photos/${currentPhoto.id}/comments/${encodeURIComponent(commentId)}`,
         { method: 'DELETE' },
       );
       if (!res.ok) {
@@ -754,7 +755,7 @@ export function PhotoViewer({
         const next = new Map(prev);
         const cur = prev.get(currentPhoto.key);
         next.set(currentPhoto.key, {
-          items: (cur?.items ?? []).filter((c) => c.id !== id),
+          items: (cur?.items ?? []).filter((c) => c.id !== commentId),
           loaded: true,
         });
         return next;
@@ -1082,7 +1083,7 @@ export function PhotoViewer({
                 role="menuitem"
                 onClick={() => {
                   window.open(
-                    `/p/${encodeURIComponent(currentPhoto.key)}`,
+                    `/photos/${currentPhoto.id}`,
                     '_blank',
                     'noopener,noreferrer',
                   );
@@ -1098,13 +1099,13 @@ export function PhotoViewer({
                 onClick={async () => {
                   try {
                     await navigator.clipboard.writeText(
-                      `${window.location.origin}/p/${encodeURIComponent(currentPhoto.key)}`,
+                      `${window.location.origin}/photos/${currentPhoto.id}`,
                     );
                   } catch {
                     // Clipboard API blocked (insecure context, perms).
                     // Fall back to a hidden textarea selection.
                     const ta = document.createElement('textarea');
-                    ta.value = `${window.location.origin}/p/${encodeURIComponent(currentPhoto.key)}`;
+                    ta.value = `${window.location.origin}/photos/${currentPhoto.id}`;
                     ta.style.position = 'fixed';
                     ta.style.opacity = '0';
                     document.body.appendChild(ta);

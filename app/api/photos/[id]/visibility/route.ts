@@ -1,29 +1,28 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// PATCH /api/photos/[key]/visibility
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Frank #7735: PATCH a single photo's §24 share level, keyed by UUID.
 // Body: { visibility: 'private' | 'unlisted' | 'public' }
-// Updates a single photo's §24 share level. Uses the service_role
-// admin client so we don't depend on the anon key having write
-// permissions — a single-user personal site doesn't need per-row
-// owner scoping at the RLS layer for now.
+// Admin client used so we don't depend on anon write perms.
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: Promise<{ key: string }> },
+  { params }: { params: Promise<{ id: string }> },
 ) {
-  const { key } = await params;
-  if (!key) {
-    return Response.json({ error: 'missing key' }, { status: 400 });
+  const { id } = await params;
+  if (!UUID_RE.test(id)) {
+    return NextResponse.json({ error: 'not found' }, { status: 404 });
   }
 
   let body: { visibility?: unknown };
   try {
     body = (await req.json()) as { visibility?: unknown };
   } catch {
-    return Response.json({ error: 'invalid json body' }, { status: 400 });
+    return NextResponse.json({ error: 'invalid json body' }, { status: 400 });
   }
 
   const visibility = body.visibility;
@@ -32,7 +31,7 @@ export async function PATCH(
     visibility !== 'unlisted' &&
     visibility !== 'public'
   ) {
-    return Response.json(
+    return NextResponse.json(
       {
         error:
           'invalid visibility — must be one of: private, unlisted, public',
@@ -45,17 +44,17 @@ export async function PATCH(
   const { data, error } = await supabase
     .from('photos')
     .update({ visibility })
-    .eq('key', key)
-    .select('key, visibility')
+    .eq('id', id)
+    .select('id, visibility')
     .maybeSingle();
 
   if (error) {
     console.error('[visibility PATCH error]', error.message);
-    return Response.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
   if (!data) {
-    return Response.json({ error: 'photo not found' }, { status: 404 });
+    return NextResponse.json({ error: 'photo not found' }, { status: 404 });
   }
 
-  return Response.json({ ok: true, key: data.key, visibility: data.visibility });
+  return NextResponse.json({ ok: true, id: data.id, visibility: data.visibility });
 }

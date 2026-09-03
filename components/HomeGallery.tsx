@@ -68,7 +68,7 @@ export function HomeGallery({ locale }: { locale: Locale }) {
         const { data, error } = await supabase
           .from('photos')
           .select(
-            'key, lat, lng, public_url, thumbnail_url, filename, taken_at, created_at, camera_make, camera_model, categories, location_name',
+            'id, key, lat, lng, public_url, thumbnail_url, filename, taken_at, created_at, camera_make, camera_model, categories, location_name',
           )
           .order('created_at', { ascending: false })
           .limit(500);
