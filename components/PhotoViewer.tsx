@@ -201,12 +201,12 @@ export function PhotoViewer({
   const [retryNonce, setRetryNonce] = useState(0);
 
   // ── More Menu state ───────────────────────────────────────────
-  // Frank #7668 doc/0902.md: hide raw sharing URL behind a ⋯ menu.
-  // The menu opens on the trigger click, closes on outside click /
-  // Escape / menu-item click. Outside-click uses mousedown (not
-  // click) so we close before any focus / navigation fires.
-  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
-  const moreMenuRef = useRef<HTMLDivElement>(null);
+  // Frank #0903 doc/0903.md: share state for Action Bar's "✓ 已复制"
+  // feedback. The "分享" button shows "✓ 已复制" for ~1.8s after a
+  // successful copy. shareTimeoutRef holds the timer so a rapid second
+  // click cancels the prior one cleanly.
+  const [shareState, setShareState] = useState<'idle' | 'copied'>('idle');
+  const shareTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── URL history state ───────────────────────────────────────────
   // prevUrlRef = the URL before the viewer pushed its first entry.
@@ -378,38 +378,13 @@ export function PhotoViewer({
   }, [currentPhoto.key]);
 
   // ── More Menu: outside-click + Escape close (Frank #7668) ─────
-  // The trigger button toggles state. This effect closes the menu
-  // when the user clicks anywhere outside the dropdown, presses
-  // Escape, or scrolls. Mousedown (not click) so we close before
-  // any focus / navigation fires on the underlying element.
+  // Frank #0903: cleanup share timeout on unmount so the timer
+  // doesn't fire against a stale component.
   useEffect(() => {
-    if (!moreMenuOpen) return;
-    function onMouseDown(e: MouseEvent) {
-      const target = e.target as HTMLElement | null;
-      if (!target) return;
-      // Inside the dropdown → keep open.
-      if (moreMenuRef.current && moreMenuRef.current.contains(target)) {
-        return;
-      }
-      // The trigger button itself → keep open (its own onClick toggles).
-      if (target.closest(`[aria-label="${t(locale, 'viewer.more')}"]`)) {
-        return;
-      }
-      setMoreMenuOpen(false);
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        setMoreMenuOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', onMouseDown);
-    document.addEventListener('keydown', onKey);
     return () => {
-      document.removeEventListener('mousedown', onMouseDown);
-      document.removeEventListener('keydown', onKey);
+      if (shareTimeoutRef.current) clearTimeout(shareTimeoutRef.current);
     };
-  }, [moreMenuOpen, locale]);
+  }, []);
 
   // ── Pointer drag (unified desktop + mobile) ────────────────────
 
@@ -767,6 +742,58 @@ export function PhotoViewer({
 
   // ── Render ──────────────────────────────────────────────────────
 
+  // ── Frank #0903: Action Bar handlers ────────────────────────────
+  // handleViewOriginal opens the photo through the auth-gated image
+  // endpoint (commit 93d1d14) so canViewPhoto / ownership checks
+  // still run. Never the raw R2 key — that would bypass permissions.
+  const handleViewOriginal = useCallback(() => {
+    if (!currentPhoto) return;
+    window.open(
+      photoImageUrl(currentPhoto, 'full'),
+      '_blank',
+      'noopener,noreferrer',
+    );
+  }, [currentPhoto]);
+
+  // handleShare tries the Web Share API first (works on mobile
+  // browsers; lets the user pick a target app). On desktop, or
+  // when Web Share is unavailable / cancelled, falls back to
+  // clipboard. Shows "✓ 已复制" for 1.8s after a successful copy.
+  const handleShare = useCallback(async () => {
+    if (!currentPhoto) return;
+    const shareUrl = `${window.location.origin}/photos/${currentPhoto.id}`;
+    try {
+      if (
+        typeof navigator !== 'undefined' &&
+        typeof navigator.share === 'function' &&
+        typeof navigator.canShare === 'function' &&
+        navigator.canShare({ url: shareUrl })
+      ) {
+        await navigator.share({ url: shareUrl });
+        return;
+      }
+    } catch {
+      // user cancelled or share API error — fall through to clipboard
+    }
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+    } catch {
+      // Clipboard API blocked (insecure context / no perms).
+      // Fallback: hidden textarea + execCommand('copy').
+      const ta = document.createElement('textarea');
+      ta.value = shareUrl;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch {}
+      document.body.removeChild(ta);
+    }
+    setShareState('copied');
+    if (shareTimeoutRef.current) clearTimeout(shareTimeoutRef.current);
+    shareTimeoutRef.current = setTimeout(() => setShareState('idle'), 1800);
+  }, [currentPhoto]);
+
   const likeCount = currentLikes?.count ?? 0;
   const userLiked = currentLikes?.userLiked ?? false;
   const comments = currentComments?.items ?? [];
@@ -1027,20 +1054,25 @@ export function PhotoViewer({
 
         </div>
 
-        {/* Social row — Like + More Menu (⋯).
-            Frank #7668 doc/0902.md: raw URL hidden here, "打开原图"
-            lives in the More Menu. */}
-        <div className="flex flex-wrap items-center gap-3 px-4 pt-2 pb-1">
+        {/* Frank #0903 doc/0903.md: Photo Action Bar replaces the old
+            ⋯ overflow menu (Frank #7668 Social row). 3 equal-weight
+            buttons (Like / View Original / Share). Same height, vertical
+            alignment, border radius, typography. min-h-[44px] for
+            mobile touch target. Same hover/active state across all 3 —
+            no single button stands out — to keep the photo as the visual
+            center. */}
+        <div
+          role="toolbar"
+          aria-label={t(locale, 'viewer.actions')}
+          className="flex items-stretch gap-2 px-4 py-2"
+        >
+          {/* Like */}
           <button
             type="button"
             onClick={toggleLike}
             disabled={!isSignedIn || likePending}
             aria-pressed={userLiked}
-            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition disabled:cursor-not-allowed disabled:opacity-50 ${
-              userLiked
-                ? 'border-rose-400/60 bg-rose-500/20 text-rose-200 hover:bg-rose-500/30'
-                : 'border-white/20 bg-white/5 text-white/70 hover:border-white/40 hover:text-white'
-            }`}
+            aria-label={userLiked ? t(locale, 'viewer.unlike') : t(locale, 'viewer.like')}
             title={
               isSignedIn
                 ? userLiked
@@ -1048,79 +1080,48 @@ export function PhotoViewer({
                   : t(locale, 'viewer.like')
                 : t(locale, 'viewer.likeSignInHint')
             }
+            className="flex-1 inline-flex items-center justify-center gap-1.5 rounded border border-white/15 bg-white/[0.02] px-3 min-h-[44px] text-sm text-white/80 transition hover:border-white/30 hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <span aria-hidden="true">{userLiked ? '❤️' : '🤍'}</span>
+            <span aria-hidden="true" className="text-base leading-none">{userLiked ? '♥' : '♡'}</span>
             <span className="tabular-nums">{likeCount}</span>
           </button>
-          {!isSignedIn && (
-            <span className="text-xs text-white/40">
-              {t(locale, 'viewer.likeSignInHint')}
-            </span>
-          )}
 
-          {/* More Menu trigger — pushes to far right of the social row.
-              Frank #7668: hides raw URL behind this; menu contains
-              "打开原图" + "复制分享链接". */}
+          {/* View Original */}
           <button
             type="button"
-            onClick={() => setMoreMenuOpen((v) => !v)}
-            aria-expanded={moreMenuOpen}
-            aria-haspopup="menu"
-            aria-label={t(locale, 'viewer.more')}
-            className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-white/5 text-base leading-none text-white/70 transition hover:border-white/40 hover:bg-white/10 hover:text-white"
+            onClick={handleViewOriginal}
+            aria-label={t(locale, 'viewer.viewOriginal')}
+            title={t(locale, 'viewer.viewOriginal')}
+            className="flex-1 inline-flex items-center justify-center gap-1.5 rounded border border-white/15 bg-white/[0.02] px-3 min-h-[44px] text-sm text-white/80 transition hover:border-white/30 hover:bg-white/[0.06] hover:text-white"
           >
-            ⋯
+            <span aria-hidden="true" className="text-base leading-none">⛶</span>
+            <span className="hidden sm:inline">{t(locale, 'viewer.viewOriginal')}</span>
+            <span className="sm:hidden">{t(locale, 'viewer.viewOriginalShort')}</span>
           </button>
-          {moreMenuOpen && (
-            <div
-              ref={moreMenuRef}
-              role="menu"
-              className="absolute right-4 z-30 mt-1 min-w-[180px] rounded-lg border border-white/15 bg-black/85 py-1 shadow-xl backdrop-blur-md"
-              style={{ marginTop: '7.5rem' }}
-            >
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  window.open(
-                    `/photos/${currentPhoto.id}`,
-                    '_blank',
-                    'noopener,noreferrer',
-                  );
-                  setMoreMenuOpen(false);
-                }}
-                className="block w-full px-3 py-2 text-left text-sm text-white/85 transition hover:bg-white/10"
-              >
-                {t(locale, 'viewer.openOriginal')}
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={async () => {
-                  try {
-                    await navigator.clipboard.writeText(
-                      `${window.location.origin}/photos/${currentPhoto.id}`,
-                    );
-                  } catch {
-                    // Clipboard API blocked (insecure context, perms).
-                    // Fall back to a hidden textarea selection.
-                    const ta = document.createElement('textarea');
-                    ta.value = `${window.location.origin}/photos/${currentPhoto.id}`;
-                    ta.style.position = 'fixed';
-                    ta.style.opacity = '0';
-                    document.body.appendChild(ta);
-                    ta.select();
-                    try { document.execCommand('copy'); } catch {}
-                    document.body.removeChild(ta);
-                  }
-                  setMoreMenuOpen(false);
-                }}
-                className="block w-full px-3 py-2 text-left text-sm text-white/85 transition hover:bg-white/10"
-              >
-                {t(locale, 'viewer.copyShareLink')}
-              </button>
-            </div>
-          )}
+
+          {/* Share */}
+          <button
+            type="button"
+            onClick={handleShare}
+            aria-label={shareState === 'copied' ? t(locale, 'viewer.copied') : t(locale, 'viewer.share')}
+            title={shareState === 'copied' ? t(locale, 'viewer.copied') : t(locale, 'viewer.share')}
+            className="flex-1 inline-flex items-center justify-center gap-1.5 rounded border border-white/15 bg-white/[0.02] px-3 min-h-[44px] text-sm text-white/80 transition hover:border-white/30 hover:bg-white/[0.06] hover:text-white"
+          >
+            {shareState === 'copied' ? (
+              <>
+                <span aria-hidden="true" className="text-base leading-none">✓</span>
+                <span>{t(locale, 'viewer.copied')}</span>
+              </>
+            ) : (
+              <>
+                <span aria-hidden="true" className="text-base leading-none">
+                  <span className="hidden sm:inline">🔗</span>
+                  <span className="sm:hidden">↗</span>
+                </span>
+                <span>{t(locale, 'viewer.share')}</span>
+              </>
+            )}
+          </button>
         </div>
 
         {/* Comments — internal scroll (max-h-60 = 15rem ≈ 6 lines),

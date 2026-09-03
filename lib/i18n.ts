@@ -263,18 +263,29 @@ const dict: Dict = {
     zh: '重试',
     ja: '再試行',
   },
-  // Frank #7668 doc/0902.md — More Menu (⋯) hides raw sharing URL.
-  'viewer.more': {
-    zh: '更多',
-    ja: 'その他',
+  // Frank #0903 doc/0903.md — Action Bar replaces the old ⋯ overflow
+  // menu. 3 equal-weight buttons (Like / View Original / Share). No
+  // media-query hack; "查看原图"/"原图" swap per breakpoint via
+  // Tailwind responsive classes.
+  'viewer.actions': {
+    zh: '照片操作',
+    ja: '写真アクション',
   },
-  'viewer.openOriginal': {
-    zh: '打开原图',
-    ja: '原画を開く',
+  'viewer.viewOriginal': {
+    zh: '查看原图',
+    ja: '原画を見る',
   },
-  'viewer.copyShareLink': {
-    zh: '复制分享链接',
-    ja: '共有リンクをコピー',
+  'viewer.viewOriginalShort': {
+    zh: '原图',
+    ja: '原画',
+  },
+  'viewer.share': {
+    zh: '分享',
+    ja: '共有',
+  },
+  'viewer.copied': {
+    zh: '✓ 已复制',
+    ja: '✓ コピー済み',
   },
 };
 

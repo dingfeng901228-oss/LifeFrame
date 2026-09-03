@@ -392,26 +392,110 @@ try {
     }
   }
 
-  // ── E. Original Image (via More Menu) ────────────────────────────
-  // Clicking "打开原图" in the PhotoViewer's More Menu opens
-  // /photos/<id> in a new tab. Verifies the URL is the photo-id form
-  // (not the legacy /p/<key> form).
-  console.log('\n=== E. Original Image ===');
+  // ── E. Original Image (rendered <img src>) ─────────────────────
+  // Verifies the rendered img src uses the photo-id image endpoint
+  // (UUID, not legacy /p/<key>). Covers Frank #0903 (Action Bar
+  // opens /api/photos/[id]/image, never R2 directly).
+  console.log('\n=== E. Original Image (rendered src) ===');
   if (SCENERY_PHOTO_ID) {
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     const page = await ctx.newPage();
     try {
       await page.goto(`${BASE}/photos/${SCENERY_PHOTO_ID}`, { waitUntil: 'domcontentloaded' });
       await page.waitForSelector('main article img', { timeout: 10000 });
-      // Verify the rendered img src is the photo-id image endpoint, not legacy /p/
       const imgSrc = await page.locator('main article img').first().getAttribute('src');
       record(
-        'Original image src uses /api/photos/[id]/image (UUID, no R2 key)',
+        'E: rendered img src uses /api/photos/[id]/image',
         typeof imgSrc === 'string' && imgSrc.includes(`/api/photos/${SCENERY_PHOTO_ID}/image`),
         `src=${imgSrc}`,
       );
     } catch (err) {
-      record('Original image', false, String(err.message ?? err));
+      record('E: original image', false, String(err.message ?? err));
+    } finally {
+      await ctx.close();
+    }
+  }
+
+  // ── F. Action Bar (Frank #0903 doc/0903.md) ────────────────────
+  // Replaces the old ⋯ overflow menu with 3 equal-weight buttons:
+  // Like / View Original / Share. Verifies no overflow trigger,
+  // all 3 buttons exist with correct labels, View Original opens
+  // /api/photos/[id]/image in a new tab, Share copies /photos/<id>
+  // to clipboard and shows the "✓ 已复制" feedback.
+  console.log('\n=== F. Action Bar (Frank #0903) ===');
+  if (SCENERY_PHOTO_ID) {
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const page = await ctx.newPage();
+    try {
+      // Open PhotoViewer via the homepage (forces modal-style viewer
+      // with the Action Bar; the SSR /photos/<id> page is layout-only
+      // and doesn't render the toolbar).
+      await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(4000);
+      const markerLoc = page.locator('svg g[style*="cursor: pointer"]').first();
+      if ((await markerLoc.count()) === 0) {
+        record('F: marker found on /', false, 'no clickable marker');
+      } else {
+        await markerLoc.click({ force: true });
+        await page.waitForTimeout(800);
+        const thumb = page.locator('button[title]:not([title=""]):not([title="下一张"]):not([title="上一张"]):not([title="关闭"])').filter({ has: page.locator('img') }).first();
+        if ((await thumb.count()) > 0) await thumb.click({ force: true });
+        await page.waitForTimeout(800);
+
+        const dialog = page.locator('[role="dialog"]');
+        await dialog.waitFor({ timeout: 5000 });
+        const toolbar = dialog.locator('[role="toolbar"]');
+        await toolbar.waitFor({ timeout: 5000 });
+
+        // F1: no ⋯ overflow trigger
+        const overflowTrigger = await dialog.locator('[aria-haspopup="menu"]').count();
+        record('F: no ⋯ overflow menu trigger', overflowTrigger === 0);
+
+        // F2: 3 buttons present
+        const viewBtnCount = await dialog.locator('[aria-label="查看原图"]').count();
+        const shareBtnCount = await dialog.locator('[aria-label="分享"]').count();
+        record('F: View Original button present (aria-label="查看原图")', viewBtnCount >= 1);
+        record('F: Share button present (aria-label="分享")', shareBtnCount >= 1);
+
+        // F3: View Original opens /api/photos/[id]/image in new tab
+        const [newPage] = await Promise.all([
+          ctx.waitForEvent('page'),
+          dialog.locator('[aria-label="查看原图"]').click(),
+        ]);
+        await newPage.waitForLoadState('domcontentloaded');
+        const newUrl = newPage.url();
+        record(
+          'F: View Original opens /api/photos/[id]/image (no R2 key)',
+          newUrl.includes(`/api/photos/${SCENERY_PHOTO_ID}/image`),
+          `newTabUrl=${newUrl}`,
+        );
+        await newPage.close();
+
+        // F4: Share copies /photos/<id> and shows ✓ 已复制 feedback
+        await ctx.grantPermissions(['clipboard-read', 'clipboard-write']);
+        await dialog.locator('[aria-label="分享"]').click();
+        await page.waitForTimeout(300);
+        const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
+        const expectedShareUrl = `${BASE}/photos/${SCENERY_PHOTO_ID}`;
+        record(
+          'F: Share copies /photos/<id> URL to clipboard',
+          clipboardText === expectedShareUrl,
+          `clipboard=${clipboardText} expected=${expectedShareUrl}`,
+        );
+        const copiedBtnCount = await dialog.locator('[aria-label="✓ 已复制"]').count();
+        record('F: Share shows ✓ 已复制 feedback after copy', copiedBtnCount >= 1);
+
+        // F5: feedback reverts to "分享" after ~1.8s
+        await page.waitForTimeout(2200);
+        const revertedBtnCount = await dialog.locator('[aria-label="分享"]').count();
+        record('F: Share button reverts to "分享" label after ~1.8s', revertedBtnCount >= 1);
+
+        // F6: toolbar stays open (Escape doesn't close due to Share click)
+        const dialogStillOpen = await dialog.count();
+        record('F: PhotoViewer stays open after Share click', dialogStillOpen >= 1);
+      }
+    } catch (err) {
+      record('F: Action Bar test', false, String(err.message ?? err));
     } finally {
       await ctx.close();
     }
