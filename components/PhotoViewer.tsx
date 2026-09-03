@@ -229,9 +229,6 @@ export function PhotoViewer({
   // ── Aspect ratio for the current photo ──────────────────────────
   // Default to 3:2 (common landscape ratio) until we know better;
   // upgraded to the real ratio once the full image has loaded once.
-  const aspectRatio =
-    aspectRatioCache.get(currentPhoto.key) ?? 3 / 2;
-
   // ── Helpers ─────────────────────────────────────────────────────
 
   const navigateTo = useCallback(
@@ -875,7 +872,7 @@ export function PhotoViewer({
                 alt=""
                 aria-hidden="true"
                 draggable={false}
-                className={`max-w-full max-h-full min-h-0 w-auto h-auto object-contain ${
+                className={`max-w-full max-h-full w-auto h-auto object-contain ${
                   leavingPhoto.direction === 1
                     ? 'pv-photo-out-left'
                     : 'pv-photo-out-right'
@@ -883,10 +880,16 @@ export function PhotoViewer({
               />
             </div>
           )}
-          {/* Current photo wrapper */}
+          {/* Current photo wrapper — Frank #7721: absolute inset-0
+              so the wrapper fills Photo Stage (same model as the
+              leavingPhoto wrapper above). The previous non-absolute
+              flex item sized to the img's natural pixels, which let
+              a 4032×3024 natural photo overflow Photo Stage and
+              get center-cropped by overflow-hidden (visible as
+              "top of photo clipped" on landscape desktop). */}
           <div
             key={`current-wrap-${currentPhoto.key}-${retryNonce}`}
-            className="flex items-center justify-center"
+            className="absolute inset-0 flex items-center justify-center"
             style={{
               transform: `translate3d(${dragOffset}px, 0, 0)`,
               transition: isDragging
@@ -900,7 +903,7 @@ export function PhotoViewer({
               src={photoImageUrl(currentPhoto, 'full')}
               alt={currentPhoto.filename}
               draggable={false}
-              className={`max-w-full max-h-full min-h-0 w-auto h-auto object-contain ${
+              className={`max-w-full max-h-full w-auto h-auto object-contain ${
                 direction === 1
                   ? 'pv-photo-in-right'
                   : direction === -1
