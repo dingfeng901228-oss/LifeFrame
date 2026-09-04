@@ -214,6 +214,23 @@ export function HomeGallery({ locale }: { locale: Locale }) {
     [visiblePhotos],
   );
 
+  // Phase 6: PhotoMap markers — same filteredPhotos as the Globe,
+  // but with the richer shape PhotoMap needs (id, filename, taken_at
+  // for future popups + click → photo detail). Phase 5.1 keeps these
+  // derived from visiblePhotos so Timeline filter stays the single
+  // source of truth (spec §22).
+  const photoMapMarkers = useMemo(
+    () =>
+      visiblePhotos.map((p) => ({
+        id: p.id,
+        lat: p.lat,
+        lng: p.lng,
+        filename: p.filename,
+        taken_at: p.taken_at,
+      })),
+    [visiblePhotos],
+  );
+
   // Stable Globe handlers — useCallback so the React.memo wrap
   // around Globe can short-circuit re-renders when markers + handlers
   // are unchanged across selectedDate ticks during Time Travel.
@@ -318,6 +335,7 @@ export function HomeGallery({ locale }: { locale: Locale }) {
         <div className="relative h-[40vh] min-h-[260px] flex-shrink-0">
           <SpatialExplorer
             markers={markers}
+            photoMapMarkers={photoMapMarkers}
             onMarkerSelect={handleMarkerSelect}
             onClusterClick={handleClusterClick}
           />
@@ -375,6 +393,7 @@ export function HomeGallery({ locale }: { locale: Locale }) {
       <div className="absolute inset-0">
         <SpatialExplorer
           markers={markers}
+          photoMapMarkers={photoMapMarkers}
           onMarkerSelect={handleMarkerSelect}
           onClusterClick={handleClusterClick}
         />
