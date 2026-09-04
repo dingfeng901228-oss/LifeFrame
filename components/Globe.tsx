@@ -20,6 +20,12 @@ type Props = {
   // (in the same order as `markers`). The parent maps these to actual
   // Photo rows and shows them in whatever modal/grid it likes.
   onClusterClick?: (indices: number[]) => void;
+  // Phase 3 (SpatialExplorer wiring): fired when the user drags
+  // (rotation changes) or zooms (scale changes). Phase 4 reads scale
+  // from this stream to trigger the Globe → Map crossfade at
+  // MAP_TRANSITION_BEGIN.
+  onRotationChange?: (rotation: [number, number]) => void;
+  onScaleChange?: (scale: number) => void;
 };
 
 // Scale bounds. The lower bound is set so the ocean + countries
@@ -46,13 +52,37 @@ type Size = { w: number; h: number };
  * together — the previous version had a fixed ocean radius which
  * meant the sphere "grew" past its outline when you scrolled in.
  */
-function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {}) {
+function GlobeImpl({
+  markers = [],
+  onMarkerSelect,
+  onClusterClick,
+  onRotationChange,
+  onScaleChange,
+}: Props = {}) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState<Size>({ w: 800, h: 800 });
   const [rotation, setRotation] =
     useState<[number, number]>([0, -22]);
   const [scale, setScale] = useState(360);
   const [autoRotate, setAutoRotate] = useState(true);
+
+  // Stable refs for the rotation/scale callbacks so the watchers
+  // below don't re-fire when SpatialExplorer passes fresh function
+  // refs each render.
+  const onRotationChangeRef = useRef(onRotationChange);
+  onRotationChangeRef.current = onRotationChange;
+  const onScaleChangeRef = useRef(onScaleChange);
+  onScaleChangeRef.current = onScaleChange;
+
+  // Phase 3: stream Globe state up to SpatialExplorer. Phase 4 reads
+  // `scale` from this stream to trigger the crossfade at
+  // MAP_TRANSITION_BEGIN.
+  useEffect(() => {
+    onRotationChangeRef.current?.(rotation);
+  }, [rotation]);
+  useEffect(() => {
+    onScaleChangeRef.current?.(scale);
+  }, [scale]);
 
   const dragRef = useRef<{
     x: number;

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Globe } from '@/components/Globe';
+import { SpatialExplorer } from '@/components/SpatialExplorer';
 import { Timeline } from '@/components/Timeline';
 import { TimeTravel } from '@/components/TimeTravel';
 import { LifeJourney } from '@/components/LifeJourney';
@@ -316,7 +316,7 @@ export function HomeGallery({ locale }: { locale: Locale }) {
 
         {/* Globe as visual background — 40vh per doc Task 4 */}
         <div className="relative h-[40vh] min-h-[260px] flex-shrink-0">
-          <Globe
+          <SpatialExplorer
             markers={markers}
             onMarkerSelect={handleMarkerSelect}
             onClusterClick={handleClusterClick}
@@ -373,7 +373,7 @@ export function HomeGallery({ locale }: { locale: Locale }) {
           layout (flex column, 40vh globe) below takes over. */}
       <div className="hidden lg:block">
       <div className="absolute inset-0">
-        <Globe
+        <SpatialExplorer
           markers={markers}
           onMarkerSelect={handleMarkerSelect}
           onClusterClick={handleClusterClick}
