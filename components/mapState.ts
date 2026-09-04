@@ -23,6 +23,13 @@ export type MapState = {
 
 export type SpatialViewState = {
   mode: SpatialViewMode;
+  /**
+   * Phase 5: where the current transition is heading.
+   * `null` when mode is 'globe' or 'map' (no transition in flight).
+   * Set by ENTER_TRANSITION based on the current mode; consumed
+   * by COMPLETE_TRANSITION and SpatialTransition's opacity logic.
+   */
+  pendingTarget: 'globe' | 'map' | null;
   globe: GlobeState;
   map: MapState;
 };
@@ -32,9 +39,14 @@ export type SpatialViewAction =
   | { type: 'GLOBE_ROTATION_CHANGED'; rotation: [number, number] }
   /** Fired by Globe's wheel handler — scale drives the transition. */
   | { type: 'GLOBE_SCALE_CHANGED'; scale: number }
-  /** Start the transition (Phase 4 will trigger this automatically). */
+  /**
+   * Phase 5: start a transition. Reducer infers target from current
+   * mode — 'globe' → target 'map', 'map' → target 'globe'. This
+   * lets the same action cover both forward (scale-driven) and
+   * reverse (button-driven) transitions.
+   */
   | { type: 'ENTER_TRANSITION' }
-  /** Finish the transition (Phase 4 calls on map.on('load')). */
+  /** Finish the transition (Phase 4: map.on('load'); Phase 5: setTimeout). */
   | { type: 'COMPLETE_TRANSITION'; target: 'globe' | 'map' }
   /** Fired by PhotoMap's moveend — keeps map state in sync. */
   | {
@@ -42,8 +54,6 @@ export type SpatialViewAction =
       center: [number, number];
       zoom: number;
     }
-  /** User clicks "← 返回地球仪" (Phase 5 wires the button). */
-  | { type: 'REQUEST_GLOBE' }
   /** Internal — used by tests to force-jump modes. */
   | { type: 'REQUEST_MAP' };
 
@@ -54,6 +64,7 @@ export type SpatialViewAction =
 export function createInitialSpatialState(): SpatialViewState {
   return {
     mode: 'globe',
+    pendingTarget: null,
     globe: { rotation: [0, -22], scale: 360 },
     map: { center: [0, 20], zoom: 2 },
   };
@@ -74,25 +85,32 @@ export function spatialReducer(
         ...state,
         globe: { ...state.globe, scale: action.scale },
       };
-    case 'ENTER_TRANSITION':
-      // No-op if already transitioning (idempotent).
-      return state.mode === 'transitioning'
-        ? state
-        : { ...state, mode: 'transitioning' };
+    case 'ENTER_TRANSITION': {
+      // Idempotent — no-op if already transitioning.
+      if (state.mode === 'transitioning') return state;
+      // Target is the opposite of the current mode (forward from
+      // globe→map, reverse from map→globe).
+      const target: 'globe' | 'map' =
+        state.mode === 'globe' ? 'map' : 'globe';
+      return {
+        ...state,
+        mode: 'transitioning',
+        pendingTarget: target,
+      };
+    }
     case 'COMPLETE_TRANSITION':
-      return { ...state, mode: action.target };
+      return {
+        ...state,
+        mode: action.target,
+        pendingTarget: null,
+      };
     case 'MAP_MOVE_END':
       return {
         ...state,
         map: { center: action.center, zoom: action.zoom },
       };
-    case 'REQUEST_GLOBE':
-      // Phase 5 will set mode='transitioning' first (reverse), then
-      // 'globe' on completion. Phase 3 just sets mode directly so
-      // the state-machine plumbing is in place.
-      return { ...state, mode: 'globe' };
     case 'REQUEST_MAP':
-      return { ...state, mode: 'map' };
+      return { ...state, mode: 'map', pendingTarget: null };
     default:
       return state;
   }

@@ -29,22 +29,28 @@ type Props = {
 };
 
 /**
- * SpatialExplorer — Phase 4.
+ * SpatialExplorer — Phase 5.
  *
  * Owns the spatial mode state machine and orchestrates the
- * Globe ↔ PhotoMap crossfade. Reads current Globe rotation/scale
- * from the reducer (fed by Globe's onRotationChange / onScaleChange
- * callbacks) and computes the matching MapLibre center/zoom so the
- * user's visual focus is preserved across the transition (spec §9–11).
+ * Globe ↔ PhotoMap crossfade in both directions:
  *
- * Trigger chain:
- *   globe.scale >= MAP_TRANSITION_BEGIN (2300)
- *     → ENTER_TRANSITION  (mode = 'transitioning')
- *     → SpatialTransition fades Globe 1→0, PhotoMap 0→1
- *     → PhotoMap.map.on('load') fires
- *     → COMPLETE_TRANSITION('map')  (mode = 'map')
+ *   Forward (Phase 4, scale-driven):
+ *     globe.scale >= MAP_TRANSITION_BEGIN (2300)
+ *       → ENTER_TRANSITION  (pendingTarget = 'map')
+ *       → SpatialTransition fades Globe 1→0, PhotoMap 0→1
+ *       → PhotoMap.map.on('load') fires
+ *       → COMPLETE_TRANSITION('map')
  *
- * Phase 5 will add the reverse ("← 返回地球仪") button.
+ *   Reverse (Phase 5, button-driven):
+ *     user clicks "← 返回地球仪"
+ *       → ENTER_TRANSITION  (pendingTarget = 'globe')
+ *       → SpatialTransition fades Globe 0→1, PhotoMap 1→0
+ *       → setTimeout(TRANSITION_DURATION_MS)
+ *       → COMPLETE_TRANSITION('globe')
+ *
+ * Spec §31–32: returning to Globe restores state.globe.rotation +
+ * state.globe.scale (we kept these in the reducer throughout the
+ * forward transition), so the user lands back where they were.
  */
 export function SpatialExplorer({
   markers = [],
@@ -58,18 +64,16 @@ export function SpatialExplorer({
     undefined,
     createInitialSpatialState,
   );
-  // PhotoMap basemap readiness — kept as React state (not in the
-  // spatial reducer) because it's an internal PhotoMap lifecycle
-  // event, not a user-driven transition trigger. The completion
-  // effect below watches both this flag and state.mode to fire
-  // COMPLETE_TRANSITION exactly once when the user has triggered
-  // a transition AND the map is ready.
+  // PhotoMap basemap readiness — separate React state because it's
+  // an internal PhotoMap lifecycle event, not a user-driven
+  // transition trigger. The completion effect below watches both
+  // this flag and state.mode to fire COMPLETE_TRANSITION exactly
+  // once when the user has triggered a transition AND the map is
+  // ready (forward direction only — reverse uses setTimeout).
   const [mapReady, setMapReady] = useState(false);
 
-  // Trigger the transition when the user wheels the Globe past
-  // MAP_TRANSITION_BEGIN. ENTER_TRANSITION is idempotent in the
-  // reducer (no-op if already transitioning), so the effect is safe
-  // to re-fire while scale is above the threshold.
+  // Forward trigger: scale crosses MAP_TRANSITION_BEGIN.
+  // ENTER_TRANSITION is idempotent in the reducer.
   useEffect(() => {
     if (
       state.mode === 'globe' &&
@@ -79,39 +83,49 @@ export function SpatialExplorer({
     }
   }, [state.mode, state.globe.scale]);
 
-  // Complete the transition when BOTH conditions hold:
-  //   1. state.mode === 'transitioning' (user has triggered)
-  //   2. mapReady === true (PhotoMap basemap.on('load') fired)
+  // Forward completion: only when the user triggered a forward
+  // transition (pendingTarget === 'map') AND the map is ready.
   // Either ordering works:
   //   - Map loads first, then user crosses threshold → effect
   //     fires when state.mode changes to 'transitioning'.
   //   - User crosses threshold first, then map loads → effect
   //     fires when mapReady flips to true.
-  // Without this guard, the original "dispatch on onMapReady"
-  // approach would fire COMPLETE_TRANSITION before ENTER_TRANSITION
-  // (PhotoMap is mounted always → basemap can finish loading while
-  // mode is still 'globe'), jumping straight to 'map' and skipping
-  // the crossfade.
+  // Without the pendingTarget guard, a reverse transition
+  // (Phase 5) would also fire COMPLETE_TRANSITION('map') on
+  // mapReady flipping — premature completion to 'map' when the
+  // user actually wanted to return to 'globe'.
   useEffect(() => {
-    if (state.mode === 'transitioning' && mapReady) {
+    if (state.mode === 'transitioning' && mapReady && state.pendingTarget === 'map') {
       dispatch({ type: 'COMPLETE_TRANSITION', target: 'map' });
     }
-  }, [state.mode, mapReady]);
+  }, [state.mode, mapReady, state.pendingTarget]);
+
+  // Reverse completion: when entering reverse transition
+  // (pendingTarget === 'globe'), wait one CSS transition cycle
+  // then dispatch COMPLETE_TRANSITION('globe'). The CSS opacity
+  // animation runs in parallel; the user sees Globe fade in +
+  // PhotoMap fade out, then Globe is fully visible.
+  useEffect(() => {
+    if (state.mode !== 'transitioning' || state.pendingTarget !== 'globe') return;
+    const timer = setTimeout(() => {
+      dispatch({ type: 'COMPLETE_TRANSITION', target: 'globe' });
+    }, TRANSITION_DURATION_MS);
+    return () => clearTimeout(timer);
+  }, [state.mode, state.pendingTarget]);
 
   // Compute PhotoMap's initial center/zoom from current Globe state.
   // rotationToCenter applies the d3-geo inverse (rotation → lng/lat);
-  // globeScaleToMapZoom maps scale → MapLibre zoom. Both functions
-  // live in lib/* and components/mapConfig.ts respectively.
-  const mapCenter: [number, number] = (() => {
-    const c = rotationToCenter(state.globe.rotation);
-    return [c.lng, c.lat];
-  })();
+  // globeScaleToMapZoom maps scale → MapLibre zoom.
+  const { lng, lat } = rotationToCenter(state.globe.rotation);
+  const mapCenter: [number, number] = [lng, lat];
   const mapZoom = globeScaleToMapZoom(state.globe.scale);
 
   return (
     <SpatialTransition
       mode={state.mode}
+      pendingTarget={state.pendingTarget}
       durationMs={TRANSITION_DURATION_MS}
+      onRequestGlobe={() => dispatch({ type: 'ENTER_TRANSITION' })}
       globe={
         <Globe
           markers={markers}
