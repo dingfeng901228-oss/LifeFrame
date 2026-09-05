@@ -84,6 +84,24 @@ function GlobeImpl({
     onScaleChangeRef.current?.(scale);
   }, [scale]);
 
+  // MapLibre second-round bug fix (Frank #7914): track all active
+  // pointers so 2-finger pinch (mobile) can compute distance
+  // ratio and dispatch scale changes instead of triggering two
+  // single-finger drags that jitter rotation.
+  const activePointersRef = useRef<Map<number, { x: number; y: number }>>(
+    new Map(),
+  );
+  // Pinch state — set when a second pointer goes down. null while
+  // only one (or zero) pointer is active. Records the distance +
+  // scale at pinch-start so each pointermove can compute the
+  // ratio against the static initial frame (avoids drift on
+  // long-running pinches).
+  const pinchStateRef = useRef<{
+    initialDistance: number;
+    initialScale: number;
+  } | null>(null);
+  // Single-finger drag — preserves the existing #6980/#6983 UX
+  // (drag rotates; click on empty globe toggles auto-rotate).
   const dragRef = useRef<{
     x: number;
     y: number;
@@ -238,7 +256,7 @@ function GlobeImpl({
     [onClusterClick],
   );
 
-  // ── Drag handling (pointer events for unified mouse/touch) ─────
+  // ── Drag + pinch handling (pointer events for unified mouse/touch) ─
   // Window-level pointermove/pointerup listeners are attached on
   // pointerdown so drag keeps working even when the pointer leaves
   // the wrapper (e.g. touch dragged off-screen). This replaces the
@@ -246,15 +264,55 @@ function GlobeImpl({
   // click events to the capture target (per Pointer Events spec), which
   // silently broke marker onClick. Without it, clicks fire on the
   // original target (the marker <g>) and the photo detail modal opens.
+  //
+  // MapLibre second-round fix (Frank #7914): also tracks multi-touch
+  // via activePointersRef + pinchStateRef. Two simultaneous pointers
+  // switch from drag-rotation to pinch-scale (distance ratio).
+  // Three+ pointers are ignored (no extra gesture). When one of two
+  // pinch pointers lifts, we resume single-finger drag with the
+  // remaining pointer so the user can finish rotating without
+  // lifting both fingers.
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (e.button !== 0 && e.pointerType === 'mouse') return;
-      dragRef.current = {
+      // Track this pointer regardless of count.
+      activePointersRef.current.set(e.pointerId, {
         x: e.clientX,
         y: e.clientY,
-        rot: [...rotation],
-      };
-      movedRef.current = false;
+      });
+
+      const count = activePointersRef.current.size;
+      if (count === 1) {
+        // Single-finger drag — preserve existing #6980/#6983 UX.
+        dragRef.current = {
+          x: e.clientX,
+          y: e.clientY,
+          rot: [...rotation],
+        };
+        movedRef.current = false;
+        pinchStateRef.current = null;
+      } else if (count === 2) {
+        // Enter pinch mode — record initial distance + scale.
+        const pts = Array.from(activePointersRef.current.values());
+        const dx = pts[0].x - pts[1].x;
+        const dy = pts[0].y - pts[1].y;
+        const initialDistance = Math.hypot(dx, dy);
+        if (initialDistance > 0) {
+          pinchStateRef.current = {
+            initialDistance,
+            initialScale: scale,
+          };
+        }
+        // Drop drag — once two fingers are down, the user is
+        // pinching, not rotating. Don't apply further rotation
+        // changes from the second pointer's movements.
+        dragRef.current = null;
+        movedRef.current = false;
+      } else {
+        // 3+ pointers — ignore extras. Stay in pinch (or drag)
+        // mode driven by the first two.
+      }
+
       // Don't pause on pointerdown — the up handler decides based
       // on whether the user dragged (→ pause) or just clicked
       // (→ toggle). The pause/continue button was removed in #6983
@@ -267,11 +325,50 @@ function GlobeImpl({
         once: true,
       });
     },
-    [rotation],
+    [rotation, scale],
   );
 
   const handleWindowPointerMove = useCallback(
     (e: PointerEvent) => {
+      // Always update the active-pointer set so pinch can compute
+      // the live distance between the two tracked fingers.
+      if (activePointersRef.current.has(e.pointerId)) {
+        activePointersRef.current.set(e.pointerId, {
+          x: e.clientX,
+          y: e.clientY,
+        });
+      }
+
+      // Pinch mode — 2 active pointers. Compute new distance,
+      // derive scale ratio against initialDistance, clamp to
+      // MIN_SCALE / MAX_SCALE so the same threshold that triggers
+      // the Globe → Map transition also applies to pinch (per
+      // Frank #7914: "Pinch zoom must use the same MIN_SCALE /
+      // MAX_SCALE / transition threshold as Desktop wheel").
+      const pinch = pinchStateRef.current;
+      if (pinch && activePointersRef.current.size >= 2) {
+        const pts = Array.from(activePointersRef.current.values()).slice(
+          0,
+          2,
+        );
+        const dx = pts[0].x - pts[1].x;
+        const dy = pts[0].y - pts[1].y;
+        const newDistance = Math.hypot(dx, dy);
+        if (newDistance > 0 && pinch.initialDistance > 0) {
+          const ratio = newDistance / pinch.initialDistance;
+          const next = pinch.initialScale * ratio;
+          const clamped = Math.max(
+            MIN_SCALE,
+            Math.min(MAX_SCALE, next),
+          );
+          setScale(clamped);
+        }
+        // Pinch mode does NOT touch rotation — per Frank #7914
+        // "不要让双指 pinch 同时触发 Globe rotation".
+        return;
+      }
+
+      // Single-finger drag — original logic.
       const d = dragRef.current;
       if (!d) return;
       const dx = e.clientX - d.x;
@@ -291,23 +388,53 @@ function GlobeImpl({
     [],
   );
 
-  const handleWindowPointerUp = useCallback(() => {
-    // If the pointer didn't move between down and up, treat it as a
-    // click on the empty globe area → toggle auto-rotate. If it did
-    // move, the user was dragging → leave the globe paused (the
-    // setAutoRotate(false) call would have been issued the first
-    // time, but we can just toggle false again — no harm).
-    if (movedRef.current) {
-      setAutoRotate(false);
-    } else {
-      setAutoRotate((v) => !v);
-    }
-    dragRef.current = null;
-    movedRef.current = false;
-    window.removeEventListener('pointermove', handleWindowPointerMove);
-    window.removeEventListener('pointerup', handleWindowPointerUp);
-    window.removeEventListener('pointercancel', handleWindowPointerUp);
-  }, []);
+  const handleWindowPointerUp = useCallback(
+    (e: PointerEvent) => {
+      // Remove this pointer from the active set.
+      activePointersRef.current.delete(e.pointerId);
+      const remaining = activePointersRef.current.size;
+
+      // If we were pinching and one finger lifted, the remaining
+      // finger should resume drag-mode from its current position
+      // so the user can keep rotating without lifting both.
+      if (remaining === 1 && pinchStateRef.current) {
+        const last = Array.from(activePointersRef.current.entries())[0];
+        pinchStateRef.current = null;
+        if (last) {
+          dragRef.current = {
+            x: last[1].x,
+            y: last[1].y,
+            rot: [...rotation],
+          };
+          movedRef.current = true; // suppress click-toggle; we just finished a pinch
+        }
+      } else if (remaining === 0) {
+        // Last finger up — finalize.
+        if (movedRef.current) {
+          setAutoRotate(false);
+        } else {
+          // Treat as a click on empty globe → toggle auto-rotate.
+          // (Only meaningful in single-finger drag mode; pinch
+          // exits with movedRef=true so the click-toggle branch
+          // is naturally skipped.)
+          setAutoRotate((v) => !v);
+        }
+        dragRef.current = null;
+        movedRef.current = false;
+        pinchStateRef.current = null;
+      }
+
+      // Only tear down window listeners when all pointers are
+      // released; otherwise we keep them attached so the next
+      // pointermove can still reach us.
+      if (remaining === 0) {
+        window.removeEventListener('pointermove', handleWindowPointerMove);
+        window.removeEventListener('pointerup', handleWindowPointerUp);
+        window.removeEventListener('pointercancel', handleWindowPointerUp);
+      }
+    },
+    [rotation],
+  );
 
   // Cleanup on unmount.
   useEffect(() => {

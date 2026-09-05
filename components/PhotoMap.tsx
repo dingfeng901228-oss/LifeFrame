@@ -41,6 +41,13 @@ type Props = {
    *  SpatialExplorer uses this to gate the crossfade (spec §12, §41:
    *  "don't let Globe disappear before the map is ready"). */
   onMapReady?: () => void;
+  /** MapLibre second-round fix (Frank #7914): PhotoMap reports
+   *  errors up so SpatialExplorer can cancel an in-flight
+   *  transition back to 'globe' (preventing the "黑屏 + 无法返回"
+   *  failure mode). The argument is a short human-readable
+   *  message — SpatialExplorer doesn't branch on the message,
+   *  only on the fact that an error was reported. */
+  onMapError?: (message: string) => void;
   /** Fired on every move-end. Phase 5 Map → Globe reverse needs
    *  this to save the user's last map state. */
   onMoveEnd?: (center: [number, number], zoom: number) => void;
@@ -68,6 +75,7 @@ export function PhotoMap({
   initialZoom = DEFAULT_MAP_ZOOM,
   onMarkerClick,
   onMapReady,
+  onMapError,
   onMoveEnd,
   className = 'h-full w-full',
 }: Props) {
@@ -81,15 +89,34 @@ export function PhotoMap({
   // (init effect running twice would remount the map).
   const onMarkerClickRef = useRef(onMarkerClick);
   const onMapReadyRef = useRef(onMapReady);
+  const onMapErrorRef = useRef(onMapError);
   const onMoveEndRef = useRef(onMoveEnd);
   onMarkerClickRef.current = onMarkerClick;
   onMapReadyRef.current = onMapReady;
+  onMapErrorRef.current = onMapError;
   onMoveEndRef.current = onMoveEnd;
 
   // ── Init map (run once on mount) ──────────────────────────────
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     const container = containerRef.current;
+
+    // MapLibre second-round fix (Frank #7914 spec §50): verify
+    // the container has real dimensions before initializing
+    // MapLibre. Initializing inside a zero-sized or display:none
+    // element yields a canvas with width/height = 0, which
+    // silently fails WebGL rendering and leaves the user on a
+    // black Map screen after the crossfade. SpatialTransition
+    // already gates visibility, but the wrapper can still mount
+    // at 0×0 before ResizeObserver fires, so we double-check.
+    const cw = container.clientWidth;
+    const ch = container.clientHeight;
+    if (cw <= 0 || ch <= 0) {
+      const msg = `PhotoMap container has no size (${cw}×${ch}); deferring init`;
+      console.warn(`[PhotoMap] ${msg}`);
+      onMapErrorRef.current?.(msg);
+      return;
+    }
 
     const map = new maplibregl.Map({
       container,
@@ -108,15 +135,35 @@ export function PhotoMap({
     // Spec §40: don't crash the page on MapLibre error. Phase 3
     // SpatialExplorer will hide this map and keep the globe on
     // screen; for Phase 2 we just log.
+    //
+    // MapLibre second-round fix (Frank #7914 spec §47-52): now
+    // ALSO report errors up to SpatialExplorer via onMapError so
+    // it can force-complete any in-flight transition back to
+    // 'globe'. Without this, a tile/style load failure during the
+    // forward crossfade leaves the user stranded on the broken
+    // Map screen — exactly the "黑屏 + attribution + 无法返回"
+    // symptom Frank reported.
     map.on('error', (e: MlErrorEvent) => {
+      const message = e?.error?.message ?? String(e);
       // eslint-disable-next-line no-console
-      console.error(
-        '[PhotoMap] MapLibre error:',
-        e?.error?.message ?? e,
-      );
+      console.error('[PhotoMap] MapLibre error:', message);
+      onMapErrorRef.current?.(message);
     });
 
     map.on('load', () => {
+      // MapLibre second-round fix (Frank #7914 spec §49): verify
+      // style is actually loaded before declaring the map ready
+      // and kicking the crossfade. map.on('load') fires once per
+      // map instance but doesn't guarantee that every style layer
+      // resolved cleanly — especially with the OpenFreeMap
+      // basemap, which depends on remote tile servers.
+      if (!map.isStyleLoaded()) {
+        const msg = 'MapLibre style not loaded after "load" event';
+        console.warn(`[PhotoMap] ${msg}`);
+        onMapErrorRef.current?.(msg);
+        return;
+      }
+
       // Empty source — populated by the markers-update effect.
       map.addSource('photos', {
         type: 'geojson',
@@ -258,6 +305,32 @@ export function PhotoMap({
     ro.observe(container);
     return () => ro.disconnect();
   }, []);
+
+  // ── MapLibre second-round fix (Frank #7914 spec §48): explicit
+  // map.resize() at key lifecycle moments. ResizeObserver covers
+  // container size changes from layout, but doesn't fire when
+  // opacity transitions 0→1 — MapLibre's WebGL canvas can stay
+  // at the last-known size and the first painted frame after
+  // the crossfade lands at the wrong viewport. Calling resize()
+  // when the map finishes loading catches the most common case
+  // (initialization in a 0-size container, then transition reveals
+  // it).
+  useEffect(() => {
+    if (!mapLoaded) return;
+    const map = mapRef.current;
+    if (!map) return;
+    // Defer one frame so SpatialTransition's CSS opacity transition
+    // has a chance to apply (otherwise the resize computes against
+    // a still-transitioning container).
+    const raf = requestAnimationFrame(() => {
+      try {
+        map.resize();
+      } catch (err) {
+        console.warn('[PhotoMap] resize() failed:', err);
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [mapLoaded]);
 
   return (
     <div ref={containerRef} className={className} aria-hidden="true" />

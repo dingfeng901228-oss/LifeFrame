@@ -7,7 +7,11 @@
  * (scale → preload → crossfade); Phase 5 wires the reverse.
  */
 
-export type SpatialViewMode = 'globe' | 'transitioning' | 'map';
+export type SpatialViewMode =
+  | 'globe'
+  | 'transitioning-to-map'
+  | 'map'
+  | 'transitioning-to-globe';
 
 /** Globe's d3-geo rotation [lambda, phi] + projection scale. */
 export type GlobeState = {
@@ -70,6 +74,23 @@ export function createInitialSpatialState(): SpatialViewState {
   };
 }
 
+/**
+ * MapLibre second-round fix (Frank #7914): SpatialExplorer still
+ * sets `mode` to 'globe' | 'transitioning' | 'map' from the old
+ * reducer signature (SpatialExplorer.tsx reads state.mode === 'globe'
+ * / 'map' for forward + reverse triggers, and reads
+ * state.mode === 'transitioning' to gate the auto-complete timeout).
+ * We map those three legacy values onto the new 4-name mode here
+ * so the rest of the codebase keeps compiling. New code paths
+ * should compare against the full 4-name mode.
+ */
+export function legacyMode(mode: SpatialViewMode): 'globe' | 'transitioning' | 'map' {
+  if (mode === 'transitioning-to-map' || mode === 'transitioning-to-globe') {
+    return 'transitioning';
+  }
+  return mode as 'globe' | 'map';
+}
+
 export function spatialReducer(
   state: SpatialViewState,
   action: SpatialViewAction,
@@ -86,16 +107,27 @@ export function spatialReducer(
         globe: { ...state.globe, scale: action.scale },
       };
     case 'ENTER_TRANSITION': {
-      // Idempotent — no-op if already transitioning.
-      if (state.mode === 'transitioning') return state;
-      // Target is the opposite of the current mode (forward from
-      // globe→map, reverse from map→globe).
-      const target: 'globe' | 'map' =
-        state.mode === 'globe' ? 'map' : 'globe';
+      // Idempotent — no-op if already transitioning (either direction).
+      if (state.mode === 'transitioning-to-map' || state.mode === 'transitioning-to-globe') {
+        return state;
+      }
+      // MapLibre second-round fix (Frank #7914): explicit mode
+      // names per spec — 'globe'|'transitioning-to-map'|'map'|
+      // 'transitioning-to-globe'. Target direction baked into
+      // the mode name so SpatialTransition can read it without
+      // cross-checking pendingTarget.
+      if (state.mode === 'globe') {
+        return {
+          ...state,
+          mode: 'transitioning-to-map',
+          pendingTarget: 'map',
+        };
+      }
+      // state.mode === 'map' → reverse transition.
       return {
         ...state,
-        mode: 'transitioning',
-        pendingTarget: target,
+        mode: 'transitioning-to-globe',
+        pendingTarget: 'globe',
       };
     }
     case 'COMPLETE_TRANSITION':

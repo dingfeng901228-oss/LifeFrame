@@ -53,12 +53,28 @@ export function SpatialTransition({
   const photoMapVisibility =
     photoMapOpacity > 0 ? 'visible' : 'hidden';
 
+  // MapLibre second-round fix (Frank #7914): pointer-events must be
+  // gated by mode so the inactive layer can't swallow wheel /
+  // pointermove events. Without this:
+  //   - mode='map': Globe's window-level pointermove listener (set up
+  //     in Globe.tsx on pointerdown) is still wired and would clobber
+  //     Globe rotation whenever the user drags inside Map bounds.
+  //   - mode='globe': PhotoMap's MapLibre would still receive wheel
+  //     events through the absolute overlap, mutating map state while
+  //     the user thinks they're rotating the globe.
+  //   - mode='transitioning': both layers must ignore input until
+  //     the crossfade resolves, otherwise rapid wheels during the
+  //     fade trigger forward↔reverse oscillation.
+  const globePointerEvents = targetIsGlobe ? 'auto' : 'none';
+  const photoMapPointerEvents = targetIsMap ? 'auto' : 'none';
+
   return (
     <div className="relative h-full w-full">
       <div
         className="absolute inset-0"
         style={{
           opacity: globeOpacity,
+          pointerEvents: globePointerEvents,
           transition: `opacity ${durationMs}ms ease-in-out`,
         }}
       >
@@ -69,6 +85,7 @@ export function SpatialTransition({
         style={{
           opacity: photoMapOpacity,
           visibility: photoMapVisibility,
+          pointerEvents: photoMapPointerEvents,
           transition: `opacity ${durationMs}ms ease-in-out`,
         }}
       >

@@ -39,11 +39,26 @@ export function globeScaleToMapZoom(scale: number): number {
 //   scale >= MAP_TRANSITION_START  → start preloading PhotoMap
 //   scale >= MAP_TRANSITION_BEGIN  → start opacity crossfade
 //   scale == MAP_TRANSITION_END    → PhotoMap fully shown
-//   MAP_FULL_REVERSE              → reverse transition (Map → Globe)
+//
+// MapLibre second-round fix (Frank #7914): MAP_TRANSITION_BEGIN
+// bumped from 2300 → 2350 to widen the hysteresis gap between
+// forward (Globe scale) and reverse (Map zoom) thresholds. The
+// old MAP_FULL_REVERSE = 2400 used Globe scale, which is
+// meaningless when the user is already in Map mode (Globe scale
+// can't change there) — replaced by MAP_TO_GLOBE_ZOOM below so
+// the reverse trigger fires on the user's actual MapLibre zoom.
 export const MAP_TRANSITION_START = 2100;
-export const MAP_TRANSITION_BEGIN = 2300;
+export const MAP_TRANSITION_BEGIN = 2350;
 export const MAP_TRANSITION_END = 2400;
-export const MAP_FULL_REVERSE = 2400;
+
+// Reverse threshold (Map → Globe). MapLibre zoom ≤ 3 means the
+// user has zoomed out far enough that the world view is back to
+// "country scale" — at that point the Globe gives them a
+// equivalent (or better) mental model and the crossfade back is
+// natural. Using a separate value from MAP_TRANSITION_BEGIN
+// (Globe scale 2350) creates the hysteresis Frank called out in
+// #7914: "防止 Globe → Map → Globe → Map 无限循环".
+export const MAP_TO_GLOBE_ZOOM = 3;
 
 // Transition animation duration in ms (spec §13).
 // Recommended 650ms — long enough to feel intentional, short
