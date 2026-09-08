@@ -383,7 +383,7 @@ export function Timeline({
             selectedDate ? formatShort(selectedDate) : '未选择'
           }
           tabIndex={0}
-          className={`relative h-1.5 touch-none select-none rounded-full bg-black/10 dark:bg-white/10 transition ${
+          className={`relative h-3 touch-none select-none rounded-full bg-black/10 dark:bg-white/10 transition sm:h-1.5 ${
             dragging
               ? 'cursor-grabbing bg-black/15 dark:bg-white/15'
               : 'cursor-pointer hover:bg-black/15 dark:hover:bg-white/15'
@@ -447,7 +447,7 @@ export function Timeline({
           }}
           aria-label="回到起点"
           title="回到起点"
-          className="rounded-full border border-black/20 px-2 py-0.5 transition hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/5"
+          className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-black/20 px-3 text-base transition hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/5"
         >
           ⏮
         </button>
@@ -456,7 +456,7 @@ export function Timeline({
           onClick={() => setPlaying((p) => !p)}
           aria-label={playing ? '暂停播放' : '开始播放'}
           title={playing ? '暂停 (空格)' : '播放 (空格)'}
-          className="rounded-full bg-black px-3 py-0.5 font-medium text-white transition hover:bg-black/90 dark:bg-white dark:text-black dark:hover:bg-white/90"
+          className="inline-flex min-h-[44px] items-center justify-center rounded-full bg-black px-4 text-sm font-medium text-white transition hover:bg-black/90 dark:bg-white dark:text-black dark:hover:bg-white/90"
         >
           {playing ? '⏸ 暂停' : '▶ 播放'}
         </button>
@@ -468,18 +468,18 @@ export function Timeline({
           }}
           aria-label="跳到最新"
           title="跳到最新"
-          className="rounded-full border border-black/20 px-2 py-0.5 transition hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/5"
+          className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-black/20 px-3 text-base transition hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/5"
         >
           ⏭
         </button>
-        <div className="ml-2 flex gap-0.5 rounded-full border border-black/20 p-0.5 dark:border-white/20">
+        <div className="ml-1 flex gap-0.5 rounded-full border border-black/20 p-0.5 dark:border-white/20">
           {SPEED_OPTIONS.map((s, i) => (
             <button
               key={s.label}
               type="button"
               onClick={() => setSpeedIdx(i)}
               aria-pressed={speedIdx === i}
-              className={`rounded-full px-2 py-0.5 transition ${
+              className={`inline-flex min-h-[40px] min-w-[40px] items-center justify-center rounded-full px-2 text-xs transition ${
                 speedIdx === i
                   ? 'bg-black text-white dark:bg-white dark:text-black'
                   : 'text-black/55 hover:text-black dark:text-white/55 dark:hover:text-white'

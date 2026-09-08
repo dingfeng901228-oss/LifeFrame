@@ -321,8 +321,14 @@ export function HomeGallery({ locale }: { locale: Locale }) {
           </div>
         </div>
 
-        {/* Globe as visual background — 40vh per doc Task 4 */}
-        <div className="relative z-0 h-[40vh] min-h-[260px] flex-shrink-0">
+        {/* Globe as visual background — 40vh per doc Task 4. The
+            overflow-hidden is critical here: the Globe SVG has
+            overflow:visible internally so country paths can render
+            beyond their viewBox. Without the wrapper clipping, that
+            leaked content would draw on top of (or behind) the
+            Timeline flex sibling below, hiding the playhead / play /
+            pause / speed buttons from mobile users. */}
+        <div className="relative z-0 h-[40vh] min-h-[260px] flex-shrink-0 overflow-hidden">
           <Globe
             markers={markers}
             onMarkerSelect={handleMarkerSelect}
