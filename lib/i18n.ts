@@ -150,6 +150,21 @@ const dict: Dict = {
     zh: '读取拍摄时间与地点，减少手动分类。',
     ja: '撮影日時と場所を読み取って、手動の分類を減らす。',
   },
+  // Frank #0906 round-13 (P2 #9): small label rendered in the
+  // top-right corner of each feature card's demo frame. Helps
+  // visitors recognize "this is a screenshot, not a button".
+  'features.timeTravel.demoLabel': {
+    zh: 'DEMO',
+    ja: 'DEMO',
+  },
+  'features.lifeJourney.demoLabel': {
+    zh: 'DEMO',
+    ja: 'DEMO',
+  },
+  'features.autoOrganize.demoLabel': {
+    zh: 'DEMO',
+    ja: 'DEMO',
+  },
 
   // ─── Footer (app/page.tsx) ───────────────────────────────────
   'footer.copyright': {

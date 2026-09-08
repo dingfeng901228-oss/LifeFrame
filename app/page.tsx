@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { HomeGallery } from '@/components/HomeGallery';
 import { SiteFooter } from '@/components/SiteFooter';
+import { FeaturesGrid } from '@/components/FeaturesGrid';
 import { getLocale } from '@/lib/i18n-server';
 import { t, type Locale } from '@/lib/i18n';
 
@@ -31,30 +32,8 @@ export const metadata: Metadata = {
 // Frank #7304: build the feature cards from the translation
 // dict so adding / changing copy never touches JSX. Same shape
 // as before — three cards (time travel, life journey, auto
-// organize) — just strings come from t().
-function buildFeatures(locale: Locale) {
-  return [
-    {
-      icon: '⏳',
-      title: t(locale, 'features.timeTravel.title'),
-      body: t(locale, 'features.timeTravel.body'),
-    },
-    {
-      icon: '🌏',
-      title: t(locale, 'features.lifeJourney.title'),
-      body: t(locale, 'features.lifeJourney.body'),
-    },
-    {
-      icon: '📷',
-      title: t(locale, 'features.autoOrganize.title'),
-      body: t(locale, 'features.autoOrganize.body'),
-    },
-  ];
-}
-
 export default async function Home() {
   const locale = await getLocale();
-  const FEATURES = buildFeatures(locale);
   return (
     <>
       {/* Hero — globe + CTAs. Mobile: content-fit (HomeGallery's
@@ -71,15 +50,19 @@ export default async function Home() {
         <HomeGallery locale={locale} />
       </section>
 
-      {/* Features — three core capability cards. The other two
-          sections (隐私承诺 + 常见问题) were added in B3 commit
-          94faa4c and removed in B5 (#7281) since this site is
-          for Frank's personal use only. Frank #7304: heading
-          + eyebrow + per-card title + body all come from t(). */}
+      {/* Features — three core capability cards with inline
+          SVG demo mockups. Frank #0906 round-13 (P2 #9): the
+          old cards were emoji + title + one-line body, which
+          didn't sell the feature to a first-time visitor.
+          <FeaturesGrid /> renders a mini "screenshot" for each
+          feature (timeline + playhead + photo thumbs, globe
+          with 7 photo markers, 4-cell EXIF upload grid with
+          auto-tag chips) so visitors can see what the product
+          actually does without leaving the page. */}
       <section
         id="features"
         aria-labelledby="features-heading"
-        className="mx-auto max-w-4xl px-6 py-16 sm:py-24"
+        className="mx-auto max-w-5xl px-6 py-16 sm:py-24"
       >
         <p className="mb-2 text-xs tracking-[0.4em] text-black/40 dark:text-white/40 uppercase">
           {t(locale, 'features.eyebrow')}
@@ -90,24 +73,7 @@ export default async function Home() {
         >
           {t(locale, 'features.heading')}
         </h2>
-        <div className="grid gap-6 sm:grid-cols-3">
-          {FEATURES.map((f) => (
-            <article
-              key={f.title}
-              className="rounded-lg border border-black/10 bg-black/[0.02] p-6 dark:border-white/10 dark:bg-white/[0.02]"
-            >
-              <div className="text-3xl" aria-hidden="true">
-                {f.icon}
-              </div>
-              <h3 className="mt-3 text-lg font-medium text-black dark:text-white">
-                {f.title}
-              </h3>
-              <p className="mt-2 text-sm leading-relaxed text-black/70 dark:text-white/75">
-                {f.body}
-              </p>
-            </article>
-          ))}
-        </div>
+        <FeaturesGrid locale={locale} />
       </section>
 
       {/* Footer — Frank #0906 round-13 (P1 #8): use the unified
