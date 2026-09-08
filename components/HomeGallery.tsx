@@ -287,60 +287,48 @@ export function HomeGallery({ locale }: { locale: Locale }) {
           desktop because the absolute-overlay layout below takes
           over. */}
       <div className="flex min-h-[calc(100vh-65px)] w-full flex-col overflow-hidden lg:hidden">
-        {/* Hero — matches the desktop hero block (P2 #14:
-            Frank asked to keep the two breakpoints visually
-            consistent). Same three-row structure as the desktop
-            hero: small-caps eyebrow → large h1 → subtitle line.
-            The subtitle uses the same conditional as desktop
-            (loading / empty / filtered count / date-window count
-            / total count) instead of the mobile-only hardcoded
-            marketing text.
+        {/* Globe hero — Frank #0906 round-13 (P2 #14 cont.): the
+            hero title block now *overlays* the Globe instead of
+            sitting in a separate flex row above it, so the
+            translucent title background is genuinely transparent
+            and you can see the earth behind the text. This matches
+            the way the desktop hero reads (title floating over
+            the canvas).
 
-            The translucent backdrop + z-10 pair is preserved
-            from the earlier fix so the Globe's overflow:visible
-            country paths don't bleed over the title block. The
-            "开始创建我的 LifeFrame" / "先看看它如何工作" CTA pair
-            is dropped per Frank's request — the desktop row's
-            search box + 时间旅行 / 人生足迹 buttons are already
-            reachable on mobile via the controls row below the
-            Globe, so the doubled CTA pair was redundant for
-            signed-in users and confusing for guests (the search
-            and 时间旅行 / 人生足迹 controls both gate on being
-            signed in anyway, while the welcome banner above
-            already covers the guest path). */}
-        <div className="relative z-10 flex-shrink-0 bg-transparent px-4 pt-4 pb-3 text-center dark:bg-transparent">
-          <p className="text-xs tracking-[0.4em] text-black/70 dark:text-white/70 uppercase">
-            {t(locale, 'hero.japaneseSubtitle')}
-          </p>
-          <h1 className="mt-2 text-2xl font-light leading-snug text-black drop-shadow-sm dark:text-white sm:text-3xl">
-            {t(locale, 'hero.title')}
-          </h1>
-          <p className="mx-auto mt-2 max-w-md text-sm text-black/70 dark:text-white/70 drop-shadow-sm">
-            {loading
-              ? t(locale, 'hero.subtitle.loading')
-              : photos.length === 0
-                ? t(locale, 'hero.subtitle.empty')
-                : trimmedQuery
-                  ? `${visibleCount} 张匹配 "${searchQuery.trim()}" · 共 ${photos.length} 张`
-                  : selectedDate
-                    ? `${visibleCount} 张照片在 ${formatMonth(selectedDate)} ± ${TIMELINE_WINDOW_DAYS / 2} 天窗口内`
-                    : t(locale, 'hero.subtitle.countNoFilter', { count: photos.length })}
-          </p>
-        </div>
-
-        {/* Globe as visual background — 40vh per doc Task 4. The
-            overflow-hidden is critical here: the Globe SVG has
-            overflow:visible internally so country paths can render
-            beyond their viewBox. Without the wrapper clipping, that
-            leaked content would draw on top of (or behind) the
-            Timeline flex sibling below, hiding the playhead / play /
-            pause / speed buttons from mobile users. */}
-        <div className="relative z-0 h-[40vh] min-h-[260px] flex-shrink-0 overflow-hidden">
+            Layout: the Globe fills this whole relative block; the
+            three text lines (eyebrow → h1 → subtitle) sit
+            absolutely on top, pointer-events-none so touches pass
+            through to the Globe's drag/pinch handlers. z-10 keeps
+            the text above the SVG's overflow:visible country
+            paths even when zoomed in (the iPad / narrow-desktop
+            bug where the earth ate the title). overflow-hidden on
+            this block clips the leaked country paths so they never
+            cover the Timeline buttons below. */}
+        <div className="relative h-[46vh] min-h-[300px] w-full flex-shrink-0 overflow-hidden">
           <Globe
             markers={markers}
             onMarkerSelect={handleMarkerSelect}
             onClusterClick={handleClusterClick}
           />
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 px-4 pt-4 pb-2 text-center">
+            <p className="text-xs tracking-[0.4em] text-black/70 dark:text-white/70 uppercase">
+              {t(locale, 'hero.japaneseSubtitle')}
+            </p>
+            <h1 className="mt-2 text-2xl font-light leading-snug text-black drop-shadow-sm dark:text-white sm:text-3xl">
+              {t(locale, 'hero.title')}
+            </h1>
+            <p className="mx-auto mt-2 max-w-md text-sm text-black/70 dark:text-white/70 drop-shadow-sm">
+              {loading
+                ? t(locale, 'hero.subtitle.loading')
+                : photos.length === 0
+                  ? t(locale, 'hero.subtitle.empty')
+                  : trimmedQuery
+                    ? `${visibleCount} 张匹配 "${searchQuery.trim()}" · 共 ${photos.length} 张`
+                    : selectedDate
+                      ? `${visibleCount} 张照片在 ${formatMonth(selectedDate)} ± ${TIMELINE_WINDOW_DAYS / 2} 天窗口内`
+                      : t(locale, 'hero.subtitle.countNoFilter', { count: photos.length })}
+            </p>
+          </div>
         </div>
 
         {/* Conditional buttons — only for signed-in users with
@@ -398,8 +386,13 @@ export function HomeGallery({ locale }: { locale: Locale }) {
         {/* Hero text — sits above the Globe. Padding-top
             clears the 65 px header. The whole thing stays
             clickable (no pointer-events-none) so the CTAs
-            are usable even when the Globe is busy. */}
-        <div className="flex-shrink-0 px-6 pt-8 pb-4 text-center">
+            are usable even when the Globe is busy.
+            Frank #0906 round-13 (P2 #14 cont.): relative z-10
+            keeps the text above the Globe's overflow:visible
+            country paths when the user zooms the earth in hard
+            — this was the iPad / narrow-desktop bug where the
+            enlarged earth drew over the title. */}
+        <div className="relative z-10 flex-shrink-0 px-6 pt-8 pb-4 text-center">
           <p className="text-xs tracking-[0.4em] text-black/50 dark:text-white/50 uppercase">
             {t(locale, 'hero.japaneseSubtitle')}
           </p>
@@ -420,8 +413,14 @@ export function HomeGallery({ locale }: { locale: Locale }) {
         </div>
 
         {/* Globe — 55 vh stage. Self-contained so it doesn't
-            bleed into the controls row below. */}
-        <div className="relative mx-auto h-[55vh] min-h-[420px] w-full max-w-[1400px] flex-1">
+            bleed into the controls row below. overflow-hidden
+            (Frank #0906 round-13, P2 #14 cont.) clips the Globe
+            SVG's overflow:visible country paths at the stage
+            edge; without it, zooming the earth in hard on narrow
+            desktop widths (iPad landscape 1024px = lg) would
+            draw over the hero title above. The hero text is
+            z-10 so it stays readable in any case. */}
+        <div className="relative mx-auto h-[55vh] min-h-[420px] w-full max-w-[1400px] flex-1 overflow-hidden">
           <Globe
             markers={markers}
             onMarkerSelect={handleMarkerSelect}
