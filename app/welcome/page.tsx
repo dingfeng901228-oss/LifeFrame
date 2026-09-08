@@ -1,5 +1,9 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { t } from '@/lib/i18n';
+import { getLocale } from '@/lib/i18n-server';
+
+const SITE_URL = 'https://lifeframe.frank2025.com';
 
 export const metadata: Metadata = {
   title: 'LifeFrame — 用照片，留下生活的痕迹',
@@ -16,60 +20,68 @@ export const metadata: Metadata = {
   },
 };
 
-const SITE_URL = 'https://lifeframe.frank2025.com';
-
-const jsonLd = {
-  '@context': 'https://schema.org',
-  '@type': 'WebSite',
-  name: 'LifeFrame',
-  alternateName: 'LifeFrame · 写真で、暮らしの軌跡を残す',
-  url: SITE_URL,
-  description:
-    '个人照片生活记录与时空记忆展示网站。3D 地球仪 + 时间轴 + EXIF 自动读取，把你的照片按时间和空间重新组织成可探索的「生活博物馆」。',
-  inLanguage: 'zh-Hans',
-  author: { '@type': 'Person', name: 'Frank Ding' },
-  applicationCategory: 'MultimediaApplication',
-  operatingSystem: 'Web Browser',
-};
-
-const features = [
-  {
-    title: '🌍 3D 地球仪',
-    body:
-      '每张照片按 GPS 投射到地球仪上。点击照片点进入详情。多张照片在同一位置会聚合成「集群」数字徽章，可一键展开查看。',
-  },
-  {
-    title: '⏳ 时间轴',
-    body:
-      '一条从 1990 到现在的进度条。每张照片是一个章节标记。拖动筛选 ±30 天的地球仪照片，像播放器一样「拖动滑块」。',
-  },
-  {
-    title: '📅 On This Day',
-    body:
-      '「今天历史上」——显示去年、前年拍的同一天照片。最适合每年生日/纪念日翻开看。',
-  },
-  {
-    title: '📷 EXIF 自动',
-    body:
-      '上传自动读取拍摄时间、GPS、相机型号。没有 GPS 的老照片也能手动选地点（地图选点 / 使用当前位置）。',
-  },
-  {
-    title: '🏷️ 多标签分类',
-    body:
-      '人物 / 风景等分类多选。所有照片上传后都能重新组织。',
-  },
-  {
-    title: '🔒 私人默认',
-    body:
-      '所有照片默认私人（登录才能看）。后续会加公开/私密切换，让你能把精选的旅行照片分享给朋友。',
-  },
-];
-
 export default async function WelcomePage() {
+  // Frank #0906 round-13 (P0 #4): read locale server-side so the
+  // welcome page copy flips with the site-wide language switcher.
+  // Previously all Chinese-only; Japanese-locale visitors saw
+  // Chinese. Now it follows the cookie via lib/i18n-server.ts.
+  const locale = await getLocale();
+
+  // Frank #0906 round-13: metadata needs to be locale-aware too.
+  // export const metadata below uses `t` only at the function
+  // level for the JSON-LD description (which is built inside the
+  // component) — `metadata` itself stays a static literal because
+  // Next 15 metadata export forbids dynamic per-request values.
+  // The actual locale-correct title is rendered inside the page
+  // via <h1> below; metadata uses the canonical zh form which
+  // Google picks up regardless of user-locale.
   // Frank #7108 #4: removed the in-page scenery photo grid. Guests
   // can browse scenery on the actual globe at /, which is the
   // experience Frank actually wants. The CTA pair at the bottom of
   // this page now offers 登录/注册 and 游客模式浏览 side-by-side.
+
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: 'LifeFrame',
+    alternateName: 'LifeFrame · 写真で、暮らしの軌跡を残す',
+    url: SITE_URL,
+    description: t(locale, 'welcome.tagline'),
+    inLanguage: locale === 'ja' ? 'ja' : 'zh-Hans',
+    author: { '@type': 'Person', name: 'Frank Ding' },
+    applicationCategory: 'MultimediaApplication',
+    operatingSystem: 'Web Browser',
+  };
+
+  const features: Array<{
+    title: string;
+    body: string;
+  }> = [
+    {
+      title: t(locale, 'welcome.features.globe.title'),
+      body: t(locale, 'welcome.features.globe.body'),
+    },
+    {
+      title: t(locale, 'welcome.features.timeline.title'),
+      body: t(locale, 'welcome.features.timeline.body'),
+    },
+    {
+      title: t(locale, 'welcome.features.onthisday.title'),
+      body: t(locale, 'welcome.features.onthisday.body'),
+    },
+    {
+      title: t(locale, 'welcome.features.exif.title'),
+      body: t(locale, 'welcome.features.exif.body'),
+    },
+    {
+      title: t(locale, 'welcome.features.tags.title'),
+      body: t(locale, 'welcome.features.tags.body'),
+    },
+    {
+      title: t(locale, 'welcome.features.private.title'),
+      body: t(locale, 'welcome.features.private.body'),
+    },
+  ];
 
   return (
     <>
@@ -82,34 +94,27 @@ export default async function WelcomePage() {
         <article>
           <header className="mb-16">
             <p className="mb-4 text-xs tracking-[0.4em] text-black/40 dark:text-white/40 uppercase">
-              Personal photo journal
+              {t(locale, 'welcome.hero.eyebrow')}
             </p>
             <h1 className="text-4xl font-light leading-tight text-black dark:text-white sm:text-5xl">
-              用照片，留下生活的痕迹
+              {t(locale, 'welcome.hero.title')}
             </h1>
             <p className="mt-3 text-sm tracking-widest text-black/40 dark:text-white/40">
-              写真で、暮らしの軌跡を残す
+              {t(locale, 'welcome.hero.subtitle')}
             </p>
           </header>
 
           <section className="mb-16 space-y-5 text-lg leading-relaxed text-black/75 dark:text-white/75">
             <p>
-              LifeFrame 是一个<strong className="text-black dark:text-white">个人照片生活记录与时空记忆展示网站</strong>。
-              把你的照片按<strong className="text-black dark:text-white">时间</strong>
-              和<strong className="text-black dark:text-white">空间</strong>
-              重新组织成可探索的「生活博物馆」。
+              {t(locale, 'welcome.intro.p1')}
             </p>
-            <p>
-              不是传统的瀑布流相册。是一颗会慢慢自转的
-              <strong className="text-black dark:text-white">3D 地球仪</strong>、
-              一条像播放器进度条一样的
-              <strong className="text-black dark:text-white">时间轴</strong>，
-              以及一张「今天历史上」卡片。
-            </p>
+            <p>{t(locale, 'welcome.intro.p2')}</p>
           </section>
 
           <section className="mb-16">
-            <h2 className="mb-6 text-2xl font-light text-black dark:text-white">核心功能</h2>
+            <h2 className="mb-6 text-2xl font-light text-black dark:text-white">
+              {t(locale, 'welcome.features.heading')}
+            </h2>
             <ul className="space-y-6">
               {features.map((f) => (
                 <li
@@ -129,13 +134,10 @@ export default async function WelcomePage() {
             {/* Frank #7117 #3: dropped the "准备好开始记录了吗？"
                 warm-up line above the CTA pair — Frank felt the
                 phrasing was heavier than the rest of the page
-                warranted (especially compared to the more neutral
-                「邮箱 + 密码注册。或直接...」that now stands as
-                the section's only preamble). The mb-6 spacing
-                on the next <p> covers the gap, so the CTA row
-                below stays vertically aligned. */}
+                warranted. The mb-6 spacing on the next <p>
+                covers the gap. */}
             <p className="mb-6 text-sm text-black/40 dark:text-white/40">
-              邮箱 + 密码注册。或直接以游客模式浏览地球仪上的公开风景照。
+              {t(locale, 'welcome.cta.hint')}
             </p>
             {/* Frank #7108 #4: dual-CTA. Primary 登录/注册 still
                 routes through /login. Secondary 🌍 游客模式浏览 goes
@@ -149,13 +151,13 @@ export default async function WelcomePage() {
                 href="/login"
                 className="inline-block rounded-full bg-black px-8 py-3 text-sm font-medium text-white transition hover:bg-black/90 dark:bg-white dark:text-black dark:hover:bg-white/90"
               >
-                登录 / 注册 →
+                {t(locale, 'welcome.cta.primary')}
               </Link>
               <Link
                 href="/"
                 className="inline-block rounded-full border border-black/20 px-8 py-3 text-sm font-medium text-black/80 transition hover:border-black/40 hover:text-black dark:border-white/20 dark:text-white/80 dark:hover:border-white/40 dark:hover:text-white"
               >
-                🌍 游客模式浏览
+                {t(locale, 'welcome.cta.secondary')}
               </Link>
             </div>
           </section>
@@ -170,6 +172,7 @@ export default async function WelcomePage() {
                 {SITE_URL}
               </Link>
             </p>
+            <p className="mt-1">{t(locale, 'welcome.footer.tagline')}</p>
           </footer>
         </article>
       </main>

@@ -171,7 +171,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             has the richer 3-step tutorial for them) and for
             visitors who have already dismissed it once. */}
         <WelcomeBanner locale={locale} />
-        <OnboardingFlow />
+        <OnboardingFlow locale={locale} />
       </body>
     </html>
   );

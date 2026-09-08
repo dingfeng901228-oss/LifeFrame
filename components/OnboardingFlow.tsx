@@ -3,30 +3,11 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
+import { t, type Locale } from '@/lib/i18n';
 
 const STORAGE_KEY = 'lifeframe-onboarded';
 
 type Step = 1 | 2 | 3;
-
-const STEPS: Array<{
-  title: string;
-  body: string;
-  cta?: { label: string; href: string };
-}> = [
-  {
-    title: '📤 上传第一张照片',
-    body: '上传页面支持批量（最多 30 张），自动读取 EXIF 中的拍摄时间、GPS 和相机型号。所有照片默认「私密」，只有登录后才能查看。',
-    cta: { label: '去上传', href: '/admin/upload' },
-  },
-  {
-    title: '📍 选择是否保留位置',
-    body: '默认会上传时清除原图 EXIF 中的 GPS 坐标（保护隐私）。如果想保留拍摄位置，勾选「保留原图 EXIF GPS 坐标」即可。',
-  },
-  {
-    title: '🌍 生成时间线 + 地图',
-    body: '上传完成后地球仪点亮照片位置，时间轴标记拍摄时间。试试「▶ 时间旅行」按年月重看，「🌏 人生足迹」按地点重看。',
-  },
-];
 
 /**
  * First-time login onboarding flow (Task 5 of 优化需求.docx).
@@ -43,6 +24,13 @@ const STEPS: Array<{
  * — the dismissal is persisted in localStorage so subsequent
  * sign-ins don't re-trigger it.
  *
+ * Frank #0906 round-13 (P0 #4): the tour used to be hard-coded
+ * Chinese only. A Japanese-locale visitor signing in saw Chinese
+ * copy. Now the strings come from lib/i18n.ts via t(locale, ...)
+ * and follow the site-wide language switcher. locale is passed
+ * down from app/layout.tsx (server) since lib/i18n-server.ts is
+ * server-only and OnboardingFlow is a client component.
+ *
  * localStorage (not a DB column) is intentional: this is a UX
  * tutorial, not a security boundary; per-device / per-browser
  * dismissal is the right semantics. If Frank clears browser data
@@ -53,7 +41,7 @@ const STEPS: Array<{
  *   - session is present (any user, not just admin)
  *   - localStorage key is absent
  */
-export function OnboardingFlow() {
+export function OnboardingFlow({ locale }: { locale: Locale }) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<Step>(1);
 
@@ -104,7 +92,24 @@ export function OnboardingFlow() {
 
   if (!open) return null;
 
-  const current = STEPS[step - 1];
+  const current = {
+    1: {
+      title: t(locale, 'onboarding.step1.title'),
+      body: t(locale, 'onboarding.step1.body'),
+      cta: {
+        label: t(locale, 'onboarding.step1.cta'),
+        href: '/admin/upload',
+      },
+    },
+    2: {
+      title: t(locale, 'onboarding.step2.title'),
+      body: t(locale, 'onboarding.step2.body'),
+    },
+    3: {
+      title: t(locale, 'onboarding.step3.title'),
+      body: t(locale, 'onboarding.step3.body'),
+    },
+  }[step];
 
   return (
     <div
@@ -115,9 +120,9 @@ export function OnboardingFlow() {
     >
       <div className="w-full max-w-md rounded-lg border border-cyan-500/40 bg-[var(--bg-elevated)] p-6 shadow-2xl">
         <div className="mb-4 flex items-center justify-between text-xs">
-          <span className="text-white/50">首次使用引导</span>
+          <span className="text-white/50">{t(locale, 'onboarding.tag')}</span>
           <span className="tabular-nums text-white/40" aria-hidden="true">
-            {step}/3
+            {t(locale, 'onboarding.step', { current: step })}
           </span>
         </div>
         <h2
@@ -153,7 +158,7 @@ export function OnboardingFlow() {
             onClick={skip}
             className="text-xs text-white/40 underline transition hover:text-white/70"
           >
-            跳过
+            {t(locale, 'onboarding.skip')}
           </button>
           <div className="flex gap-2">
             {step === 1 && current.cta && (
@@ -168,9 +173,11 @@ export function OnboardingFlow() {
             <button
               type="button"
               onClick={next}
-              className="rounded bg-cyan-400 px-4 py-2 text-sm font-medium text-black transition hover:bg-cyan-300"
+              className="rounded bg-cyan-500 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-cyan-400"
             >
-              {step < 3 ? '下一步' : '知道了'}
+              {step < 3
+                ? t(locale, 'onboarding.next')
+                : t(locale, 'onboarding.skip')}
             </button>
           </div>
         </div>
