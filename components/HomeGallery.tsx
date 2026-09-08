@@ -7,6 +7,7 @@ import { Timeline } from '@/components/Timeline';
 import { TimeTravel } from '@/components/TimeTravel';
 import { LifeJourney } from '@/components/LifeJourney';
 import { PhotoViewer, type PhotoRow } from '@/components/PhotoViewer';
+import { SearchBox } from '@/components/SearchBox';
 import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
 import { photoImageUrl } from '@/lib/photo-url';
 import { t, type Locale } from '@/lib/i18n';
@@ -423,13 +424,13 @@ export function HomeGallery({ locale }: { locale: Locale }) {
         <div className="flex-shrink-0 border-t border-black/10 dark:border-white/10 bg-white/40 dark:bg-black/30 backdrop-blur-md">
           <div className="mx-auto flex max-w-4xl flex-col gap-3 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
             {photos.length > 0 && (
-              <input
-                type="search"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={t(locale, 'hero.searchPlaceholder')}
-                aria-label={t(locale, 'hero.searchAriaLabel')}
-                className="min-h-[44px] w-full rounded-full border border-black/15 dark:border-white/15 bg-white/90 dark:bg-white/5 px-4 text-sm text-black dark:text-white placeholder-black/40 dark:placeholder-white/40 focus:border-black/40 dark:focus:border-white/40 focus:outline-none sm:w-72"
+              <SearchBox
+                locale={locale}
+                query={searchQuery}
+                onQueryChange={setSearchQuery}
+                matches={filteredPhotos}
+                total={photos.length}
+                onPickMatch={(p) => setSelected(p)}
               />
             )}
             <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-end">

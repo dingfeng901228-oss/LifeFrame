@@ -73,6 +73,29 @@ const dict: Dict = {
     zh: '搜索照片 (文件名 / 地点 / 分类)',
     ja: '写真を検索 (ファイル名 / 場所 / カテゴリー)',
   },
+  // Frank #0906 round-13 (P1 #6): search results dropdown copy
+  // — clear button, match counter, no-results state, "more
+  // results below the fold" hint.
+  'search.clear': {
+    zh: '清除搜索',
+    ja: '検索をクリア',
+  },
+  'search.resultsLabel': {
+    zh: '匹配结果',
+    ja: '一致した写真',
+  },
+  'search.noResults': {
+    zh: '没有找到匹配 "{query}" 的照片',
+    ja: '「{query}」に一致する写真は見つかりません',
+  },
+  'search.clearAndBrowse': {
+    zh: '清除并浏览全部',
+    ja: 'クリアして全て表示',
+  },
+  'search.moreHint': {
+    zh: '还有 {count} 张匹配照片，已过滤到 Globe 标记上',
+    ja: '残り {count} 枚の一致写真は地球儀マーカーに表示中',
+  },
   'hero.onThisDay': {
     zh: '📅 历史上这一天',
     ja: '📅 历史上的この日',
