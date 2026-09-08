@@ -308,14 +308,14 @@ export function HomeGallery({ locale }: { locale: Locale }) {
             and 时间旅行 / 人生足迹 controls both gate on being
             signed in anyway, while the welcome banner above
             already covers the guest path). */}
-        <div className="relative z-10 flex-shrink-0 bg-white/80 px-4 pt-4 pb-3 text-center backdrop-blur dark:bg-black/60">
-          <p className="text-xs tracking-[0.4em] text-black/50 dark:text-white/50 uppercase">
+        <div className="relative z-10 flex-shrink-0 bg-transparent px-4 pt-4 pb-3 text-center dark:bg-transparent">
+          <p className="text-xs tracking-[0.4em] text-black/70 dark:text-white/70 uppercase">
             {t(locale, 'hero.japaneseSubtitle')}
           </p>
-          <h1 className="mt-2 text-2xl font-light leading-snug text-black dark:text-white sm:text-3xl">
+          <h1 className="mt-2 text-2xl font-light leading-snug text-black drop-shadow-sm dark:text-white sm:text-3xl">
             {t(locale, 'hero.title')}
           </h1>
-          <p className="mx-auto mt-2 max-w-md text-sm text-black/60 dark:text-white/60">
+          <p className="mx-auto mt-2 max-w-md text-sm text-black/70 dark:text-white/70 drop-shadow-sm">
             {loading
               ? t(locale, 'hero.subtitle.loading')
               : photos.length === 0
