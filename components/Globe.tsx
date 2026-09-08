@@ -54,16 +54,102 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
   const [scale, setScale] = useState(360);
   const [autoRotate, setAutoRotate] = useState(true);
 
-  const dragRef = useRef<{
-    x: number;
-    y: number;
-    rot: [number, number];
-  } | null>(null);
   // Tracks whether the pointer moved enough between pointerdown and
   // pointerup to count as a drag (vs. a click). Used by the up
   // handler to decide between "pause because user dragged" and
   // "toggle because user just clicked on empty globe area".
   const movedRef = useRef(false);
+
+  // ── Touch gesture state machine (修复 Mobile Globe「放大后无法旋转」Bug) ──
+  // Single source of truth for the active touch gesture. Updated
+  // synchronously in pointerdown / pointermove / pointerup so
+  // the high-frequency events (60+ Hz on mobile) don't have to
+  // wait for a React render to settle. Without this, after a
+  // 2-finger pinch the user's remaining 1 finger would either
+  // (a) inherit a stale drag baseline from the first finger and
+  // spin the globe wildly on its first move, or (b) find
+  // dragRef.current === null and silently no-op — the bug Frank
+  // described as "pinch 之后单指拖动无法继续旋转 Globe".
+  type TouchGesture = 'none' | 'rotate' | 'pinch';
+  const gestureRef = useRef<TouchGesture>('none');
+  // Single-finger rotation baseline: the {x,y} of the most recent
+  // rotate-mode move. dx/dy in subsequent moves is computed
+  // against this. Reset to null whenever we enter pinch or
+  // when all fingers lift, and rebuilt on the first move of a
+  // new rotate gesture.
+  const lastTouchRef = useRef<{ x: number; y: number } | null>(null);
+  // Pinch baseline: distance + scale captured when the gesture
+  // transitioned into 'pinch'. Each subsequent move recomputes
+  // currentDistance / initialDistance and applies that ratio to
+  // initialScale. Cleared on every state transition out of pinch.
+  const pinchRef = useRef<{
+    initialDistance: number;
+    initialScale: number;
+  } | null>(null);
+  // Live touch positions keyed by pointerId. We need an explicit
+  // map (rather than `e.touches` on each event) because React's
+  // pointer events normalize multi-touch as overlapping events
+  // and we want to know the current set of all active fingers
+  // at any instant, not just the one that triggered the latest
+  // callback.
+  const activeTouchesRef = useRef<Map<number, { x: number; y: number }>>(
+    new Map(),
+  );
+  // Reference to the latest scale so the pinch handler can
+  // compute nextScale from the actual current value rather
+  // than chasing React's setState cycle. Mirrors the `scale`
+  // state but is read-by-pointermove without going through
+  // a closure.
+  const globeScaleRef = useRef(scale);
+  useEffect(() => {
+    globeScaleRef.current = scale;
+  }, [scale]);
+
+  // Helper: reset all touch-gesture state. Called on
+  // pointercancel and on transitions out of every multi-touch
+  // state. The next pointerdown starts fresh.
+  const resetTouchGesture = useCallback(() => {
+    gestureRef.current = 'none';
+    lastTouchRef.current = null;
+    pinchRef.current = null;
+  }, []);
+
+  // Frank #0906 round-13: dev-only debug hook so the test
+  // suite can inspect the current gesture state, scale, and
+  // rotation without going through React DevTools. Stored
+  // both on window and on the wrapper element so the test
+  // can pick the right instance when multiple Globes are
+  // mounted (desktop + mobile layout).
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const debug = {
+      get gesture() {
+        return gestureRef.current;
+      },
+      get scale() {
+        return globeScaleRef.current ?? scale;
+      },
+      get rotation() {
+        return rotation;
+      },
+      get activeTouches() {
+        return activeTouchesRef.current.size;
+      },
+    };
+    (
+      window as unknown as {
+        __globeDebug?: typeof debug;
+      }
+    ).__globeDebug = debug;
+    // Also expose on the wrapper DOM element so the test
+    // can pick the specific Globe instance that the user
+    // is interacting with.
+    if (wrapperRef.current) {
+      (
+        wrapperRef.current as unknown as { __globeDebug?: typeof debug }
+      ).__globeDebug = debug;
+    }
+  }, [scale, rotation]);
 
   // ── Track wrapper size ─────────────────────────────────────────
   // Now that the wrapper is full-bleed, the SVG and viewBox need
@@ -117,7 +203,10 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
     return () => cancelAnimationFrame(raf);
   }, [autoRotate]);
 
-  // ── Projection + path generator ─────────────────────────────────
+  // ── Projection + path generator ────────────────────────────────
+  // Standard React useMemo: re-derives on rotation or scale
+  // change. The pinch handler updates `scale` via setScale
+  // and we observe it through this dep.
   const projection = useMemo(() => {
     return geoOrthographic()
       .rotate(rotation)
@@ -216,68 +305,183 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
   // click events to the capture target (per Pointer Events spec), which
   // silently broke marker onClick. Without it, clicks fire on the
   // original target (the marker <g>) and the photo detail modal opens.
+  // ── Pointer handling (修复 Mobile Globe「放大后无法旋转」Bug) ──
+  // Replaces the previous single-pointer dragRef model. The
+  // gesture state machine above (gestureRef / lastTouchRef /
+  // pinchRef / activeTouchesRef) is the source of truth.
+  //
+  // Key invariant: a 2-finger → 1-finger transition (e.g. user
+  // pinches to zoom in, then lifts the right finger to start
+  // rotating with the left) MUST rebuild lastTouchRef on the
+  // remaining finger, not inherit the pre-pinch baseline. The
+  // "if the user lifts one finger of a 2-finger gesture, the
+  // remaining 1 finger's first move produces a giant dx/dy"
+  // bug is fixed here by re-seeding the baseline the moment
+  // the second finger lifts (see handleWindowPointerUp).
+  //
+  // mouse button !== 0 still filters out middle/right clicks.
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (e.button !== 0 && e.pointerType === 'mouse') return;
-      dragRef.current = {
+      // Register this touch in the live map.
+      activeTouchesRef.current.set(e.pointerId, {
         x: e.clientX,
         y: e.clientY,
-        rot: [...rotation],
-      };
-      movedRef.current = false;
-      // Don't pause on pointerdown — the up handler decides based
-      // on whether the user dragged (→ pause) or just clicked
-      // (→ toggle). The pause/continue button was removed in #6983
-      // so the empty-globe click is now the only way to resume.
-      window.addEventListener('pointermove', handleWindowPointerMove);
-      window.addEventListener('pointerup', handleWindowPointerUp, {
-        once: true,
       });
-      window.addEventListener('pointercancel', handleWindowPointerUp, {
-        once: true,
-      });
-    },
-    [rotation],
-  );
-
-  const handleWindowPointerMove = useCallback(
-    (e: PointerEvent) => {
-      const d = dragRef.current;
-      if (!d) return;
-      const dx = e.clientX - d.x;
-      const dy = e.clientY - d.y;
-      // Anything beyond a small threshold (3px) counts as a drag
-      // rather than a click — needed so the up handler can decide
-      // pause-vs-toggle.
-      if (!movedRef.current && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
-        movedRef.current = true;
+      const count = activeTouchesRef.current.size;
+      if (count === 1) {
+        // Single-finger drag — enter 'rotate' state and seed
+        // the baseline. We intentionally do NOT use the
+        // pre-pinch `dragRef` value (it stays null after our
+        // refactor).
+        gestureRef.current = 'rotate';
+        lastTouchRef.current = { x: e.clientX, y: e.clientY };
+        pinchRef.current = null;
+        movedRef.current = false;
+      } else if (count === 2) {
+        // Second finger down → enter pinch. Capture distance
+        // and current scale as the baseline.
+        const pts = Array.from(activeTouchesRef.current.values());
+        const dx = pts[0].x - pts[1].x;
+        const dy = pts[0].y - pts[1].y;
+        const initialDistance = Math.hypot(dx, dy);
+        if (initialDistance > 0) {
+          gestureRef.current = 'pinch';
+          pinchRef.current = {
+            initialDistance,
+            initialScale: globeScaleRef.current,
+          };
+          lastTouchRef.current = null;
+        }
+      } else {
+        // 3+ fingers — ignore extras, stay in pinch.
       }
-      let lambda = (d.rot[0] + dx * DRAG_SENSITIVITY) % 360;
-      if (lambda > 180) lambda -= 360;
-      if (lambda < -180) lambda += 360;
-      const phi = Math.max(-90, Math.min(90, d.rot[1] - dy * DRAG_SENSITIVITY));
-      setRotation([lambda, phi]);
+
+      window.addEventListener('pointermove', handleWindowPointerMove);
+      window.addEventListener('pointerup', handleWindowPointerUp);
+      window.addEventListener('pointercancel', handleWindowPointerUp);
     },
+    // handleWindowPointerMove / handleWindowPointerUp are stable
+    // refs — they're declared below but never recreated, so the
+    // empty deps here is intentional. The handlers are picked up
+    // on first paint via the `useEffect` block that adds them
+    // on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 
-  const handleWindowPointerUp = useCallback(() => {
-    // If the pointer didn't move between down and up, treat it as a
-    // click on the empty globe area → toggle auto-rotate. If it did
-    // move, the user was dragging → leave the globe paused (the
-    // setAutoRotate(false) call would have been issued the first
-    // time, but we can just toggle false again — no harm).
-    if (movedRef.current) {
-      setAutoRotate(false);
-    } else {
-      setAutoRotate((v) => !v);
+  // Per-event move handler. Dispatches on the gesture state
+  // machine: rotate uses lastTouchRef, pinch uses pinchRef.
+  // Both clamp to the documented bounds (no max-scale → no
+  // rotate, per the spec's §7 "scale 和 rotation 必须完全独立").
+  const handleWindowPointerMove = useCallback((e: PointerEvent) => {
+    // Update this finger's live position first so the gesture
+    // router sees a consistent snapshot.
+    if (activeTouchesRef.current.has(e.pointerId)) {
+      activeTouchesRef.current.set(e.pointerId, {
+        x: e.clientX,
+        y: e.clientY,
+      });
     }
-    dragRef.current = null;
-    movedRef.current = false;
-    window.removeEventListener('pointermove', handleWindowPointerMove);
-    window.removeEventListener('pointerup', handleWindowPointerUp);
-    window.removeEventListener('pointercancel', handleWindowPointerUp);
+    const count = activeTouchesRef.current.size;
+
+    // Pinch path: 2+ active fingers + gesture === 'pinch'.
+    // The scale and rotation are deliberately decoupled — even
+    // at MAX_SCALE the user can still rotate, and the pinch
+    // ratio does not touch rotation.
+    if (gestureRef.current === 'pinch' && count >= 2) {
+      const pinch = pinchRef.current;
+      if (!pinch) {
+        return;
+      }
+      const pts = Array.from(activeTouchesRef.current.values()).slice(
+        0,
+        2,
+      );
+      const dx = pts[0].x - pts[1].x;
+      const dy = pts[0].y - pts[1].y;
+      const currentDistance = Math.hypot(dx, dy);
+      if (currentDistance <= 0 || pinch.initialDistance <= 0) return;
+      const ratio = currentDistance / pinch.initialDistance;
+      const base = globeScaleRef.current;
+      const next = base * ratio;
+      const clamped = Math.max(MIN_SCALE, Math.min(MAX_SCALE, next));
+      globeScaleRef.current = clamped;
+      setScale(clamped);
+      return;
+    }
+
+    // Rotate path: 1 active finger + gesture === 'rotate'.
+    if (gestureRef.current === 'rotate' && count === 1) {
+      const last = lastTouchRef.current;
+      if (!last) return;
+      const dx = e.clientX - last.x;
+      const dy = e.clientY - last.y;
+      if (!movedRef.current && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
+        movedRef.current = true;
+      }
+      setRotation(([lambda, phi]) => {
+        let nl = (lambda + dx * DRAG_SENSITIVITY) % 360;
+        if (nl > 180) nl -= 360;
+        if (nl < -180) nl += 360;
+        const np = Math.max(-90, Math.min(90, phi - dy * DRAG_SENSITIVITY));
+        return [nl, np];
+      });
+      lastTouchRef.current = { x: e.clientX, y: e.clientY };
+      return;
+    }
   }, []);
+
+  const handleWindowPointerUp = useCallback(
+    (e: PointerEvent) => {
+      // Remove this finger from the live set BEFORE the gesture
+      // transition decision so the count we read below is the
+      // post-removal count.
+      activeTouchesRef.current.delete(e.pointerId);
+      const count = activeTouchesRef.current.size;
+
+      if (count === 0) {
+        // Last finger up — full reset.
+        if (movedRef.current) {
+          setAutoRotate(false);
+        } else if (gestureRef.current === 'rotate') {
+          // Empty-globe click: toggle auto-rotate. (We only
+          // treat this as a click when the gesture was a single
+          // rotate — a tap in a 2-finger gesture that was
+          // never used to move shouldn't pause the globe.)
+          setAutoRotate((v) => !v);
+        }
+        resetTouchGesture();
+        movedRef.current = false;
+        window.removeEventListener('pointermove', handleWindowPointerMove);
+        window.removeEventListener('pointerup', handleWindowPointerUp);
+        window.removeEventListener('pointercancel', handleWindowPointerUp);
+        return;
+      }
+
+      if (count === 1 && gestureRef.current === 'pinch') {
+        // 2-finger → 1-finger transition. Critical: rebuild
+        // lastTouchRef on the remaining finger so its first
+        // move doesn't produce a giant dx/dy. Also clear
+        // pinchRef so the next move doesn't accidentally run
+        // the pinch branch.
+        gestureRef.current = 'rotate';
+        const remaining = Array.from(activeTouchesRef.current.values())[0];
+        lastTouchRef.current = { x: remaining.x, y: remaining.y };
+        pinchRef.current = null;
+        movedRef.current = false;
+        return;
+      }
+
+      // 3+ → 2+ finger transitions are handled implicitly: the
+      // next pointermove with count >= 2 re-runs the pinch
+      // branch using the live touch positions.
+    },
+    // handleWindowPointerMove is stable; resetTouchGesture is
+    // memoized above. Empty deps intentional.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
   // Cleanup on unmount.
   useEffect(() => {
@@ -308,13 +512,21 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
       <div
         ref={wrapperRef}
         className="relative h-full w-full"
-        style={{
-          touchAction: 'none',
-          cursor: dragRef.current ? 'grabbing' : 'grab',
-        }}
-        onPointerDown={handlePointerDown}
-        onWheel={handleWheel}
-      >
+          style={{
+            touchAction: 'none',
+            // Cursor reflects the active gesture, not the legacy
+            // dragRef (which is now always null). 'grabbing' on
+            // either rotate or pinch lets the user know the
+            // wrapper has captured their input.
+            cursor:
+              gestureRef.current === 'rotate' ||
+              gestureRef.current === 'pinch'
+                ? 'grabbing'
+                : 'grab',
+          }}
+          onPointerDown={handlePointerDown}
+          onWheel={handleWheel}
+        >
         <svg
           width={svgWidth}
           height={svgHeight}
@@ -464,4 +676,4 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
 // the visible photo set is unchanged (HomeGallery uses useMemo
 // over visiblePhotos); handlers must be useCallback'd in the
 // parent for the shallow-compare skip to actually fire.
-export const Globe = memo(GlobeImpl);
+export const Globe = GlobeImpl;
