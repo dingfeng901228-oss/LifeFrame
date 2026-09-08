@@ -287,6 +287,29 @@ const dict: Dict = {
     zh: '✓ 已复制',
     ja: '✓ コピー済み',
   },
+  // Frank #0906 round-13: visitor welcome banner copy. Shown
+  // once on the home page for un-authenticated visitors who
+  // haven't dismissed it.
+  'welcome.aria': {
+    zh: 'LifeFrame 欢迎横幅',
+    ja: 'LifeFrame ウェルカムバナー',
+  },
+  'welcome.message': {
+    zh: 'LifeFrame 是一张私人照片地图——按时间和地点，把你的生活故事画在地球上。',
+    ja: 'LifeFrame はプライベート写真地図。時間と場所で、あなたの暮らしを地球に描く。',
+  },
+  'welcome.messageShort': {
+    zh: '把生活画在地球上的私人照片地图',
+    ja: '暮らしを地球に描くプライベート写真地図',
+  },
+  'welcome.cta': {
+    zh: '开始记录',
+    ja: '記録を始める',
+  },
+  'welcome.dismiss': {
+    zh: '关闭',
+    ja: '閉じる',
+  },
 };
 
 export function t(

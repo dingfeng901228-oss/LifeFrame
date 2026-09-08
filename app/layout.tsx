@@ -7,6 +7,7 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 import { AdminLink } from '@/components/AdminLink';
 import { HomeLogo } from '@/components/HomeLogo';
 import { OnboardingFlow } from '@/components/OnboardingFlow';
+import { WelcomeBanner } from '@/components/WelcomeBanner';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { getLocale } from '@/lib/i18n-server';
 import { t } from '@/lib/i18n';
@@ -161,6 +162,15 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         </header>
         <main>{children}</main>
         <PWARegistrar />
+        {/* Frank #0906 round-13: top-of-page welcome banner for
+            un-authenticated visitors. Mounted in the root layout
+            so every page that has no real header CTA can show it
+            (right now just the home page, but the layout is the
+            cheapest place to add it). It self-suppresses for
+            signed-in users (deferring to OnboardingFlow which
+            has the richer 3-step tutorial for them) and for
+            visitors who have already dismissed it once. */}
+        <WelcomeBanner locale={locale} />
         <OnboardingFlow />
       </body>
     </html>
