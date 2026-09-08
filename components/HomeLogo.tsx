@@ -2,9 +2,10 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { LifeFrameLogoMark } from '@/components/LifeFrameLogo';
 
 /**
- * Top-left "LifeFrame" logo link.
+ * Top-left brand link in the header.
  *
  * Frank #7097: clicking the logo on /welcome used to do nothing
  * visible — it linked to `/`, which middleware redirected back to
@@ -15,6 +16,12 @@ import { usePathname } from 'next/navigation';
  * itself (effectively a no-op navigation, but no round-trip).
  * On every other route, link to `/` (the canonical app home for
  * authed users).
+ *
+ * Frank #0906 round-13 (P2 #10): the previous version rendered
+ * "LifeFrame" as plain text. Now it shows the LifeFrameLogoMark
+ * (a small globe with a cyan photo-marker) followed by the
+ * "LifeFrame" wordmark, so the brand is visually distinct from
+ * a normal link.
  */
 export function HomeLogo() {
   const pathname = usePathname();
@@ -22,9 +29,13 @@ export function HomeLogo() {
   return (
     <Link
       href={href}
-      className="text-lg font-medium tracking-wide hover:text-[var(--accent)] transition"
+      className="flex items-center gap-2 text-lg font-medium tracking-wide hover:opacity-70 transition"
     >
-      LifeFrame
+      <LifeFrameLogoMark
+        size={24}
+        className="text-black dark:text-white"
+      />
+      <span>LifeFrame</span>
     </Link>
   );
 }

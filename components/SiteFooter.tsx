@@ -6,6 +6,7 @@ import {
   SITE_URL,
 } from '@/lib/site-config';
 import { t, type Locale } from '@/lib/i18n';
+import { LifeFrameLogoMark } from '@/components/LifeFrameLogo';
 
 /**
  * Frank #0906 round-13 (P1 #8): unified site footer.
@@ -34,9 +35,15 @@ export function SiteFooter({ locale }: { locale: Locale }) {
         <div className="grid gap-8 md:grid-cols-3 md:gap-10">
           {/* Brand block */}
           <div className="md:col-span-2">
-            <p className="text-base font-light text-black dark:text-white">
-              {SITE_NAME}
-            </p>
+            <div className="flex items-center gap-2">
+              <LifeFrameLogoMark
+                size={28}
+                className="text-black dark:text-white"
+              />
+              <p className="text-base font-light text-black dark:text-white">
+                {SITE_NAME}
+              </p>
+            </div>
             <p className="mt-1 text-xs text-black/55 dark:text-white/55">
               {t(locale, 'footer.brand.title')}
             </p>
