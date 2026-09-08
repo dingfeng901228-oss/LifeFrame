@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { HomeGallery } from '@/components/HomeGallery';
+import { SiteFooter } from '@/components/SiteFooter';
 import { getLocale } from '@/lib/i18n-server';
 import { t, type Locale } from '@/lib/i18n';
 
@@ -109,40 +110,9 @@ export default async function Home() {
         </div>
       </section>
 
-      {/* Footer — contact + site URL. Slimmed down from the B3
-          marketing-style footer (Frank #7281 — personal-use site,
-          no need for prominent contact + tagline). Frank #7304:
-          all copy comes from t() so the footer flips between
-          zh / ja with the rest of the page. */}
-      <footer className="border-t border-black/10 dark:border-white/10">
-        <div className="mx-auto max-w-3xl px-6 py-10 text-xs text-black/40 dark:text-white/40">
-          <p>{t(locale, 'footer.copyright')}</p>
-          <p className="mt-1">
-            <Link
-              href="https://lifeframe.frank2025.com"
-              className="transition hover:text-black/70 dark:hover:text-white/70"
-            >
-              https://lifeframe.frank2025.com
-            </Link>
-          </p>
-          <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
-            <Link
-              href="/welcome"
-              className="transition hover:text-black/70 dark:hover:text-white/70"
-            >
-              {t(locale, 'footer.productIntro')}
-            </Link>
-            <a
-              href="mailto:dingfeng901112@gmail.com"
-              className="transition hover:text-black/70 dark:hover:text-white/70"
-            >
-              {t(locale, 'footer.contactDev')}
-            </a>
-            <span>·</span>
-            <span>{t(locale, 'footer.tagline')}</span>
-          </p>
-        </div>
-      </footer>
+      {/* Footer — Frank #0906 round-13 (P1 #8): use the unified
+          <SiteFooter /> component instead of an inline footer. */}
+      <SiteFooter locale={locale} />
     </>
   );
 }

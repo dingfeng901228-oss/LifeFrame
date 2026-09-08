@@ -1,9 +1,9 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { SiteFooter } from '@/components/SiteFooter';
+import { SITE_URL } from '@/lib/site-config';
 import { t } from '@/lib/i18n';
 import { getLocale } from '@/lib/i18n-server';
-
-const SITE_URL = 'https://lifeframe.frank2025.com';
 
 export const metadata: Metadata = {
   title: 'LifeFrame — 用照片，留下生活的痕迹',
@@ -162,18 +162,10 @@ export default async function WelcomePage() {
             </div>
           </section>
 
-          <footer className="border-t border-black/10 dark:border-white/10 pt-8 text-xs text-black/40 dark:text-white/40">
-            <p>© 2026 Frank Ding · LifeFrame</p>
-            <p className="mt-1">
-              <Link
-                href={SITE_URL}
-                className="hover:text-black/60 dark:hover:text-white/60 transition"
-              >
-                {SITE_URL}
-              </Link>
-            </p>
-            <p className="mt-1">{t(locale, 'welcome.footer.tagline')}</p>
-          </footer>
+          {/* Frank #0906 round-13 (P1 #8): welcome page now uses
+              the unified <SiteFooter /> component instead of its
+              own inline footer. */}
+          <SiteFooter locale={locale} />
         </article>
       </main>
     </>

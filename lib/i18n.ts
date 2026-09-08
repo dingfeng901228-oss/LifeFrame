@@ -172,6 +172,27 @@ const dict: Dict = {
     zh: '位置数据可选择保留或移除',
     ja: '位置データは保持・削除を選択可能',
   },
+  // Frank #0906 round-13 (P1 #8): new footer copy.
+  'footer.brand.title': {
+    zh: '用照片，留下生活的痕迹',
+    ja: '写真で、暮らしの痕跡を残す',
+  },
+  'footer.brand.subtitle': {
+    zh: '私人照片地图 · 3D 地球仪 + 时间轴 + EXIF 自动整理',
+    ja: 'プライベート写真地図 · 3D 地球儀 + タイムライン + EXIF 自動整理',
+  },
+  'footer.sources': {
+    zh: '源代码',
+    ja: 'ソースコード',
+  },
+  'footer.privacy.icon': {
+    zh: '🔒',
+    ja: '🔒',
+  },
+  'footer.privacy.tooltip': {
+    zh: '位置数据默认移除。如需保留，勾选「保留原图 EXIF GPS 坐标」即可。',
+    ja: '位置情報はデフォルトで削除されます。保持したい場合は「元画像の EXIF GPS 座標を保持」にチェック。',
+  },
 
   // ─── Language switcher ───────────────────────────────────────
   'language.switcherLabel': {
