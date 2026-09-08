@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import { Globe } from '@/components/Globe';
 import { Timeline } from '@/components/Timeline';
 import { TimeTravel } from '@/components/TimeTravel';
@@ -288,37 +287,45 @@ export function HomeGallery({ locale }: { locale: Locale }) {
           desktop because the absolute-overlay layout below takes
           over. */}
       <div className="flex min-h-[calc(100vh-65px)] w-full flex-col overflow-hidden lg:hidden">
-        {/* Hero — title + subtitle + primary/secondary CTA. Doc
-            Task 4 specifies ONE primary + ONE secondary (not
-            three equal-weight actions). min-h-[44px] = the 44x44
-            touch-target requirement from doc Task 4. The
-            z-10 / bg-* pair is the Frank #0906 round-13 fix
-            for "Globe overflow:visible eats the title": the
-            Globe's country paths render beyond their SVG
-            viewBox so they leak over the title block, which
-            has a translucent dark background and a higher
-            stacking context to stay readable. */}
+        {/* Hero — matches the desktop hero block (P2 #14:
+            Frank asked to keep the two breakpoints visually
+            consistent). Same three-row structure as the desktop
+            hero: small-caps eyebrow → large h1 → subtitle line.
+            The subtitle uses the same conditional as desktop
+            (loading / empty / filtered count / date-window count
+            / total count) instead of the mobile-only hardcoded
+            marketing text.
+
+            The translucent backdrop + z-10 pair is preserved
+            from the earlier fix so the Globe's overflow:visible
+            country paths don't bleed over the title block. The
+            "开始创建我的 LifeFrame" / "先看看它如何工作" CTA pair
+            is dropped per Frank's request — the desktop row's
+            search box + 时间旅行 / 人生足迹 buttons are already
+            reachable on mobile via the controls row below the
+            Globe, so the doubled CTA pair was redundant for
+            signed-in users and confusing for guests (the search
+            and 时间旅行 / 人生足迹 controls both gate on being
+            signed in anyway, while the welcome banner above
+            already covers the guest path). */}
         <div className="relative z-10 flex-shrink-0 bg-white/80 px-4 pt-4 pb-3 text-center backdrop-blur dark:bg-black/60">
-          <h1 className="text-2xl font-light leading-snug text-black dark:text-white sm:text-3xl">
-            用照片，留下生活的痕迹
-          </h1>
-          <p className="mx-auto mt-1.5 max-w-xs text-sm text-black/70 dark:text-white/70 sm:text-base">
-            自动按拍摄时间与地点，整理成可探索的人生地图
+          <p className="text-xs tracking-[0.4em] text-black/50 dark:text-white/50 uppercase">
+            {t(locale, 'hero.japaneseSubtitle')}
           </p>
-          <div className="mt-3 flex flex-col items-stretch gap-2 px-2 sm:flex-row sm:items-center sm:justify-center sm:gap-3 sm:px-0">
-            <Link
-              href="/login"
-              className="inline-flex min-h-[44px] items-center justify-center rounded-full bg-black px-6 text-sm font-medium text-white transition hover:bg-black/90 dark:bg-white dark:text-black dark:hover:bg-white/90"
-            >
-              {t(locale, 'hero.cta.primary')}
-            </Link>
-            <Link
-              href="/welcome"
-              className="inline-flex min-h-[44px] items-center justify-center rounded-full border border-black/20 px-6 text-sm text-black/80 transition hover:border-black/40 hover:text-black dark:border-white/20 dark:text-white/80 dark:hover:border-white/40 dark:hover:text-white"
-            >
-              {t(locale, 'hero.cta.secondary')}
-            </Link>
-          </div>
+          <h1 className="mt-2 text-2xl font-light leading-snug text-black dark:text-white sm:text-3xl">
+            {t(locale, 'hero.title')}
+          </h1>
+          <p className="mx-auto mt-2 max-w-md text-sm text-black/60 dark:text-white/60">
+            {loading
+              ? t(locale, 'hero.subtitle.loading')
+              : photos.length === 0
+                ? t(locale, 'hero.subtitle.empty')
+                : trimmedQuery
+                  ? `${visibleCount} 张匹配 "${searchQuery.trim()}" · 共 ${photos.length} 张`
+                  : selectedDate
+                    ? `${visibleCount} 张照片在 ${formatMonth(selectedDate)} ± ${TIMELINE_WINDOW_DAYS / 2} 天窗口内`
+                    : t(locale, 'hero.subtitle.countNoFilter', { count: photos.length })}
+          </p>
         </div>
 
         {/* Globe as visual background — 40vh per doc Task 4. The
