@@ -58,13 +58,14 @@ export default async function Home() {
     <>
       {/* Hero — globe + CTAs. Mobile: content-fit (HomeGallery's
           internal flex layout handles mobile stacking). Desktop:
-          min-h-viewport so the hero fills the first viewport
-          without the marketing sections scrolling it off. Frank
-          #7304: pass `locale` so HomeGallery can translate its
-          hero copy. */}
+          Frank #0906 round-13: capped at 80vh so the Features
+          section below is visible without scrolling on most
+          monitors. HomeGallery's internal flex layout handles
+          desktop stacking (hero text + globe + controls + timeline
+          in a column). */}
       <section
         aria-label="LifeFrame 简介"
-        className="relative lg:min-h-[calc(100vh-65px)] lg:w-full lg:overflow-hidden"
+        className="relative w-full lg:overflow-hidden"
       >
         <HomeGallery locale={locale} />
       </section>

@@ -286,16 +286,22 @@ export function HomeGallery({ locale }: { locale: Locale }) {
           viewports per doc Task 4 acceptance criteria. Hidden on
           desktop because the absolute-overlay layout below takes
           over. */}
-      <div className="flex h-full w-full flex-col overflow-hidden lg:hidden">
+      <div className="flex min-h-[calc(100vh-65px)] w-full flex-col overflow-hidden lg:hidden">
         {/* Hero — title + subtitle + primary/secondary CTA. Doc
             Task 4 specifies ONE primary + ONE secondary (not
             three equal-weight actions). min-h-[44px] = the 44x44
-            px touch-target requirement from doc Task 4. */}
-        <div className="flex-shrink-0 px-4 pt-3 pb-2 text-center">
-          <h1 className="text-xl font-light leading-tight text-black dark:text-white sm:text-2xl">
+            touch-target requirement from doc Task 4. The
+            z-10 / bg-* pair is the Frank #0906 round-13 fix
+            for "Globe overflow:visible eats the title": the
+            Globe's country paths render beyond their SVG
+            viewBox so they leak over the title block, which
+            has a translucent dark background and a higher
+            stacking context to stay readable. */}
+        <div className="relative z-10 flex-shrink-0 bg-white/80 px-4 pt-4 pb-3 text-center backdrop-blur dark:bg-black/60">
+          <h1 className="text-2xl font-light leading-snug text-black dark:text-white sm:text-3xl">
             用照片，留下生活的痕迹
           </h1>
-          <p className="mx-auto mt-1.5 max-w-xs text-xs text-black/70 dark:text-white/70 sm:text-sm">
+          <p className="mx-auto mt-1.5 max-w-xs text-sm text-black/70 dark:text-white/70 sm:text-base">
             自动按拍摄时间与地点，整理成可探索的人生地图
           </p>
           <div className="mt-3 flex flex-col items-stretch gap-2 px-2 sm:flex-row sm:items-center sm:justify-center sm:gap-3 sm:px-0">
@@ -315,7 +321,7 @@ export function HomeGallery({ locale }: { locale: Locale }) {
         </div>
 
         {/* Globe as visual background — 40vh per doc Task 4 */}
-        <div className="relative h-[40vh] min-h-[260px] flex-shrink-0">
+        <div className="relative z-0 h-[40vh] min-h-[260px] flex-shrink-0">
           <Globe
             markers={markers}
             onMarkerSelect={handleMarkerSelect}
@@ -365,103 +371,120 @@ export function HomeGallery({ locale }: { locale: Locale }) {
       </div>
 
       {/* Frank #7243 Task 4: wrap the existing absolute-overlay
-          layout in a hidden/lg:block divider. The wrapper is a
-          logical hide/show toggle — no positioning — so the
-          absolute children inside still resolve to the app/page.tsx
-          parent (which is `relative h-[calc(100vh-65px)]`). On
-          mobile (< lg) this wrapper is hidden and the new mobile
-          layout (flex column, 40vh globe) below takes over. */}
-      <div className="hidden lg:block">
-      <div className="absolute inset-0">
-        <Globe
-          markers={markers}
-          onMarkerSelect={handleMarkerSelect}
-          onClusterClick={handleClusterClick}
-        />
-      </div>
+          layout in a hidden/lg:block divider. Frank #0906 round-13:
+          rebuilt the desktop hero so the title and CTAs sit
+          *above* the Globe instead of overlapping it. The Globe
+          gets a 55 vh stage with a clean 1 vh breathing gap above
+          and below, then the feature controls (search, on-this-day,
+          time travel, life journey) sit on a separate row beneath
+          the Globe so the user can read them without the canvas
+          bleeding through. On mobile (< lg) this wrapper is hidden
+          and the existing flex column (40 vh globe) takes over. */}
+      <div className="hidden lg:flex lg:w-full lg:flex-col">
+        {/* Hero text — sits above the Globe. Padding-top
+            clears the 65 px header. The whole thing stays
+            clickable (no pointer-events-none) so the CTAs
+            are usable even when the Globe is busy. */}
+        <div className="flex-shrink-0 px-6 pt-8 pb-4 text-center">
+          <p className="text-xs tracking-[0.4em] text-black/50 dark:text-white/50 uppercase">
+            {t(locale, 'hero.japaneseSubtitle')}
+          </p>
+          <h1 className="mt-3 text-3xl font-light text-black dark:text-white md:text-4xl lg:text-5xl">
+            {t(locale, 'hero.title')}
+          </h1>
+          <p className="mx-auto mt-3 max-w-md text-sm text-black/60 dark:text-white/60">
+            {loading
+              ? t(locale, 'hero.subtitle.loading')
+              : photos.length === 0
+                ? t(locale, 'hero.subtitle.empty')
+                : trimmedQuery
+                  ? `${visibleCount} 张匹配 "${searchQuery.trim()}" · 共 ${photos.length} 张`
+                  : selectedDate
+                    ? `${visibleCount} 张照片在 ${formatMonth(selectedDate)} ± ${TIMELINE_WINDOW_DAYS / 2} 天窗口内`
+                    : t(locale, 'hero.subtitle.countNoFilter', { count: photos.length })}
+          </p>
+        </div>
 
-      <div className="pointer-events-none absolute inset-x-0 top-24 flex flex-col items-center px-6 text-center">
-        <p className="text-xs tracking-[0.4em] text-black/50 dark:text-white/50 uppercase">
-          {t(locale, 'hero.japaneseSubtitle')}
-        </p>
-        <h1 className="mt-3 text-2xl font-light text-black dark:text-white md:text-3xl">
-          {t(locale, 'hero.title')}
-        </h1>
-        <p className="mt-2 max-w-sm text-sm text-black/50 dark:text-white/50">
-          {loading
-            ? t(locale, 'hero.subtitle.loading')
-            : photos.length === 0
-              ? t(locale, 'hero.subtitle.empty')
-              : trimmedQuery
-                ? `${visibleCount} 张匹配 "${searchQuery.trim()}" · 共 ${photos.length} 张`
-                : selectedDate
-                  ? `${visibleCount} 张照片在 ${formatMonth(selectedDate)} ± ${TIMELINE_WINDOW_DAYS / 2} 天窗口内`
-                  : t(locale, 'hero.subtitle.countNoFilter', { count: photos.length })}
-        </p>
-        {photos.length > 0 && (
-          <input
-            type="search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={t(locale, 'hero.searchPlaceholder')}
-            aria-label={t(locale, 'hero.searchAriaLabel')}
-            className="pointer-events-auto mt-3 w-full max-w-sm rounded-full border border-black/15 dark:border-white/15 bg-black/5 dark:bg-white/5 px-4 py-2 text-sm text-black dark:text-white placeholder-black/40 dark:placeholder-white/40 focus:border-black/40 dark:focus:border-white/40 focus:outline-none"
+        {/* Globe — 55 vh stage. Self-contained so it doesn't
+            bleed into the controls row below. */}
+        <div className="relative mx-auto h-[55vh] min-h-[420px] w-full max-w-[1400px] flex-1">
+          <Globe
+            markers={markers}
+            onMarkerSelect={handleMarkerSelect}
+            onClusterClick={handleClusterClick}
           />
-        )}
-        <div className="pointer-events-auto mt-3 flex flex-wrap items-center justify-center gap-2">
-          {onThisDayGrouped.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setOnThisDayOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-full border border-cyan-500/40 dark:border-cyan-400/30 bg-white/95 dark:bg-black/40 px-3 py-1.5 text-xs text-cyan-700 dark:text-cyan-300/90 backdrop-blur-sm transition hover:border-cyan-500 dark:hover:border-cyan-400/60 hover:text-cyan-700 dark:hover:text-cyan-300"
-            >
-              📅 历史上这一天 · {onThisDayGrouped.length} 个年份 ·{' '}
-              {onThisDayGrouped.reduce((s, g) => s + g.photos.length, 0)} 张照片
-            </button>
-          )}
-          {photos.length > 0 && (
-            <>
-              <button
-                type="button"
-                onClick={() => setTimeTravelOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-full border border-fuchsia-500/40 dark:border-fuchsia-400/30 bg-white/95 dark:bg-black/40 px-3 py-1.5 text-xs text-fuchsia-700 dark:text-fuchsia-300/90 backdrop-blur-sm transition hover:border-fuchsia-500 dark:hover:border-fuchsia-400/60 hover:text-fuchsia-700 dark:hover:text-fuchsia-300"
-              >
-                ▶ 时间旅行 · Explore My Life
-              </button>
-              {photos.some((p) => p.location_name) && (
+        </div>
+
+        {/* Feature controls — search, on-this-day, time travel,
+            life journey. Sit on a clean row beneath the Globe
+            with their own backdrop so the canvas doesn't bleed
+            through. min-h-[44px] everywhere for the 44x44 touch
+            target. */}
+        <div className="flex-shrink-0 border-t border-black/10 dark:border-white/10 bg-white/40 dark:bg-black/30 backdrop-blur-md">
+          <div className="mx-auto flex max-w-4xl flex-col gap-3 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+            {photos.length > 0 && (
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={t(locale, 'hero.searchPlaceholder')}
+                aria-label={t(locale, 'hero.searchAriaLabel')}
+                className="min-h-[44px] w-full rounded-full border border-black/15 dark:border-white/15 bg-white/90 dark:bg-white/5 px-4 text-sm text-black dark:text-white placeholder-black/40 dark:placeholder-white/40 focus:border-black/40 dark:focus:border-white/40 focus:outline-none sm:w-72"
+              />
+            )}
+            <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-end">
+              {onThisDayGrouped.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => setLifeJourneyOpen(true)}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 dark:border-emerald-400/30 bg-white/95 dark:bg-black/40 px-3 py-1.5 text-xs text-emerald-700 dark:text-emerald-300/90 backdrop-blur-sm transition hover:border-emerald-500 dark:hover:border-emerald-400/60 hover:text-emerald-700 dark:hover:text-emerald-300"
+                  onClick={() => setOnThisDayOpen(true)}
+                  className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-cyan-500/40 dark:border-cyan-400/30 bg-white/95 dark:bg-black/40 px-4 text-xs text-cyan-700 dark:text-cyan-300/90 transition hover:border-cyan-500 dark:hover:border-cyan-400/60"
                 >
-                  🌏 人生足迹 · Life Journey
+                  📅 {t(locale, 'hero.onThisDay')} · {onThisDayGrouped.length} 个年份 ·{' '}
+                  {onThisDayGrouped.reduce((s, g) => s + g.photos.length, 0)} 张照片
                 </button>
               )}
-            </>
+              {photos.length > 0 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setTimeTravelOpen(true)}
+                    className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-fuchsia-500/40 dark:border-fuchsia-400/30 bg-white/95 dark:bg-black/40 px-4 text-xs text-fuchsia-700 dark:text-fuchsia-300/90 transition hover:border-fuchsia-500 dark:hover:border-fuchsia-400/60"
+                  >
+                    ▶ {t(locale, 'hero.timeTravel')}
+                  </button>
+                  {photos.some((p) => p.location_name) && (
+                    <button
+                      type="button"
+                      onClick={() => setLifeJourneyOpen(true)}
+                      className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-emerald-500/40 dark:border-emerald-400/30 bg-white/95 dark:bg-black/40 px-4 text-xs text-emerald-700 dark:text-emerald-300/90 transition hover:border-emerald-500 dark:hover:border-emerald-400/60"
+                    >
+                      🌏 {t(locale, 'hero.lifeJourney')}
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+          {fetchError && (
+            <p className="mx-auto max-w-4xl px-6 pb-3 text-xs text-rose-700 dark:text-rose-300/90">
+              ⚠ 加载照片失败：{fetchError}
+              <br />
+              <span className="text-black/40 dark:text-white/40">
+                检查 Supabase URL/anon key 是否在 Vercel Environment Variables 配齐。
+              </span>
+            </p>
           )}
         </div>
-        {fetchError && (
-          <p className="mt-3 max-w-md text-xs text-rose-700 dark:text-rose-300/90">
-            � 加载照片失败：{fetchError}
-            <br />
-            <span className="text-black/40 dark:text-white/40">
-              检查 Supabase URL/anon key 是否在 Vercel Environment Variables 配齐。
-            </span>
-          </p>
-        )}
-      </div>
 
-      {/* Timeline — drives the globe marker filter. Pinned to the
-          very bottom (bottom-3) so it sits below the (now smaller)
-          globe on desktop without overlapping. */}
-      <div className="pointer-events-auto absolute inset-x-0 bottom-3">
-        <Timeline
-          photos={photos}
-          selectedDate={selectedDate}
-          onChange={setSelectedDate}
-          windowDays={TIMELINE_WINDOW_DAYS}
-        />
-      </div>
+        {/* Timeline — pinned to the bottom of the section. */}
+        <div className="pointer-events-auto flex-shrink-0">
+          <Timeline
+            photos={photos}
+            selectedDate={selectedDate}
+            onChange={setSelectedDate}
+            windowDays={TIMELINE_WINDOW_DAYS}
+          />
+        </div>
       </div>
 
       
