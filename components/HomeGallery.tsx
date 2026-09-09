@@ -281,12 +281,17 @@ export function HomeGallery({ locale }: { locale: Locale }) {
   return (
     <>
       {/* Frank #7243 Task 4 mobile layout — sibling to the desktop
-          wrapper below. Flex column so the hero (H1 + subtitle +
-          2 CTAs) sits above the 40vh globe on 375/390/430 px
-          viewports per doc Task 4 acceptance criteria. Hidden on
-          desktop because the absolute-overlay layout below takes
-          over. */}
-      <div className="flex min-h-[calc(100vh-65px)] w-full flex-col overflow-hidden lg:hidden">
+          wrapper below. Frank #0906 round-13 (P2 #14 cont. 2):
+          content-fit column. No min-h / overflow-hidden here any
+          more: forcing the wrapper to fill calc(100vh - 65px) with
+          overflow hidden made the Globe's fixed-px SVG blow the
+          column open, which pushed the search box and Timeline
+          below the fold on phones and left a dead whitespace band
+          above them. Now the column sizes to its children (globe
+          hero block + controls + timeline) and the page scrolls
+          normally below into the Features section. Hidden on
+          desktop because the lg:flex layout below takes over. */}
+      <div className="flex w-full flex-col lg:hidden">
         {/* Globe hero — Frank #0906 round-13 (P2 #14 cont.): the
             hero title block now *overlays* the Globe instead of
             sitting in a separate flex row above it, so the
@@ -331,35 +336,53 @@ export function HomeGallery({ locale }: { locale: Locale }) {
           </div>
         </div>
 
-        {/* Conditional buttons — only for signed-in users with
-            photos. Per doc Task 4 mobile layout: [ 时间旅行 ] [
-            人生足迹 ] below the globe. On This Day stays
-            desktop-only (it's a discovery feature for power
-            users, not a primary entry point). */}
-        {sessionUserId && (
-          <div className="flex flex-shrink-0 items-center justify-center gap-2 px-4 py-3">
+        {/* Mobile controls row — Frank #0906 round-13 (P2 #14
+            cont. 2): the mobile layout now gets the same search
+            box the desktop row has. Previously the phone had no
+            search at all, and with the globe at a fixed height the
+            area under the timeline was a dead whitespace band.
+            Now: search box (when there are photos) on its own
+            row, then the signed-in action buttons (时间旅行 /
+            人生足迹) beneath it, then the Timeline — the whole
+            column fills the viewport with no empty gap. */}
+        <div className="flex-shrink-0 border-t border-black/10 bg-white/40 backdrop-blur-md dark:border-white/10 dark:bg-black/30">
+          <div className="mx-auto flex w-full max-w-3xl flex-col gap-2 px-4 pt-3 pb-1">
             {photos.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setTimeTravelOpen(true)}
-                aria-label="打开时间旅行"
-                className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-fuchsia-500/40 bg-white/95 px-4 text-xs text-fuchsia-700 dark:bg-black/40 dark:text-fuchsia-300/90"
-              >
-                ▶ 时间旅行
-              </button>
+              <SearchBox
+                locale={locale}
+                query={searchQuery}
+                onQueryChange={setSearchQuery}
+                matches={filteredPhotos}
+                total={photos.length}
+                onPickMatch={(p) => setSelected(p)}
+              />
             )}
-            {photos.some((p) => p.location_name) && (
-              <button
-                type="button"
-                onClick={() => setLifeJourneyOpen(true)}
-                aria-label="打开人生足迹"
-                className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-emerald-500/40 bg-white/95 px-4 text-xs text-emerald-700 dark:bg-black/40 dark:text-emerald-300/90"
-              >
-                🌏 人生足迹
-              </button>
+            {sessionUserId && (
+              <div className="flex flex-wrap items-center justify-center gap-2 pb-1">
+                {photos.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setTimeTravelOpen(true)}
+                    aria-label="打开时间旅行"
+                    className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-fuchsia-500/40 bg-white/95 px-4 text-xs text-fuchsia-700 dark:bg-black/40 dark:text-fuchsia-300/90"
+                  >
+                    ▶ 时间旅行
+                  </button>
+                )}
+                {photos.some((p) => p.location_name) && (
+                  <button
+                    type="button"
+                    onClick={() => setLifeJourneyOpen(true)}
+                    aria-label="打开人生足迹"
+                    className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-emerald-500/40 bg-white/95 px-4 text-xs text-emerald-700 dark:bg-black/40 dark:text-emerald-300/90"
+                  >
+                    🌏 人生足迹
+                  </button>
+                )}
+              </div>
             )}
           </div>
-        )}
+        </div>
 
         {/* Timeline at the bottom of the mobile stack. */}
         <div className="pointer-events-auto flex-shrink-0">
