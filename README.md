@@ -3,128 +3,210 @@
 > 用照片，留下生活的痕迹。
 > 写真で、暮らしの軌跡を残す。
 
-个人照片生活记录 + 时空记忆展示网站。3D 地球仪 × 时间轴联动，将照片按时间 × 空间 × 分类可视化。
+**LifeFrame 是一张私人照片地图** —— 把照片按「时间 × 空间」重新组织成一颗可探索的 3D 地球。上传照片后自动读取拍摄时间与 GPS，点亮地球上的位置点；沿着时间轴拖动，就能像播放器一样回放走过的地方、见过的人、看过的风景。
 
-完整产品定义见：[LifeFrame_要件定義書.md](./LifeFrame_要件定義書.md)
+线上地址：<https://lifeframe.frank2025.com>
 
-## 当前进度
-
-**MVP P0 骨架** —— 跑通最短路径「选择图片 → Cloudflare R2 直接 PUT 成功」。
-
-- `/`：首页空 3D 地球仪（Globe.gl）+ Slogan
-- `/upload`：选图 → 客户端向 `POST /api/upload-url` 拿签名 → 直传 R2 → 展示对象 key / 公开 URL
-
-**尚未接入**：登录、EXIF、分类、时间轴、地点聚合、人脸 / 风景、AI。
-按 §26 P0 列表逐步推进。
-
-## 技术栈
-
-| 层 | 选型 | 备注 |
-| --- | --- | --- |
-| 框架 | Next.js 15（App Router）+ React 19 + TypeScript | 和日站同栈，技能复用 |
-| 样式 | Tailwind CSS v4 | PostCSS 插件 `@tailwindcss/postcss` |
-| 3D | **cobe**（canvas WebGL，零 three.js 依赖） | MVP 「空 Globe」用 cobe；后续接入照片地点后再换 `react-globe.gl` / 自绘 three.js |
-| 存储 | Cloudflare R2（S3 兼容） | 签名 URL 直传、不经应用服务器 |
-| Auth/DB | Supabase（待接入）| 新开一个 project，只挂对象存储不动 |
-| EXIF | exifr | 后续在浏览器侧读 `takenAt / GPS / Make / Model` |
-
-## 起步
-
-### 1. 申请 R2 凭据
-1. Cloudflare Dashboard → **R2** → **Create bucket** → 命名（如 `lifeframe-uploads`）
-2. 桶 Settings → **Public Access** → 打开 Public URL（拿到 `pub-xxx.r2.dev`）
-3. **R2** → **Manage R2 API Tokens** → Create token
-   - Permissions: **Object Read & Write**
-   - 指定到上一步的 bucket
-4. 把以下五个变量填进 `.env.local`：
-
-```
-R2_ACCOUNT_ID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-R2_ACCESS_KEY_ID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-R2_SECRET_ACCESS_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-R2_BUCKET=lifeframe-uploads
-R2_PUBLIC_BASE=https://pub-xxxxxxxxxxxx.r2.dev
-```
-
-参考 `.env.example`。
-
-### 2. 安装并启动
-
-```bash
-npm install
-npm run dev
-```
-
-打开 [http://localhost:3000](http://localhost:3000) 看首页 Globe；`/upload` 选一张图试整条直传链路。
-
-### 3. 部署
-- Vercel / Cloudflare Pages（Next 静态 + Node runtime）
-- 把上面 5 个 R2 变量加进部署环境
-
-## 目录
-
-```
-app/
-  layout.tsx                全局 layout，header + nav
-  globals.css               Tailwind v4 入口
-  page.tsx                  首页（Globe + Slogan）
-  upload/page.tsx           上传页（Server Component）
-  upload/UploadForm.tsx     上传表单（Client Component）
-  api/upload-url/route.ts   生成 R2 PUT 签名 URL
-components/
-  Globe.tsx                 cobe（canvas WebGL）的客户端组件（'use client'）
-lib/
-  r2.ts                     R2 客户端 / 签名 URL 工厂（共享给后续 thumbnails / metadata）
-types/
-  react-globe.gl.d.ts       模块声明 shim（react-globe.gl 默认导出在严格 TS 下会报错）
-public/
-```
-
-## 为什么 MVP 用 cobe 而不是 react-globe.gl
-
-- react-globe.gl 在 P0 skeleton 阶段只需要一颗「空地球转」。它依赖 `three-render-objects@1.42`，该版本要求 `three@>=0.179` 来导入新版的 `Timer` 类，但我们项目装的是 `three@0.170`，触发 webpack 的 named export 报错
-- cobe 是 Vercel 出品的 4KB WebGL 球体，无 three 依赖，对 React 19 / Next 15 友好，足够应付「空转地球」阶段
-- 加照片地点这一步时再换：`react-globe.gl` 或自写 three.js layer（参见要件定義書 §21）
-
-## 下一阶段路线（P0）
-
-1. Supabase Auth 接入 → 用户登录
-2. 上传前 `exifr.parse(file)` 读 `takenAt / lat / lng / Make / Model` 写进 metadata
-3. 上传成功后写一行到 `photos` 表（user_id / key / taken_at / latitude / longitude / camera_*）
-4. 首页 Globe 用 `pointsData` 把照片地点点出来
-5. 时间轴基础结构 + 与 Globe 联动
-6. 照片详情页 + 编辑地点（GPS / 地图选点 / 当前位置三选一）
-
-## PhotoViewer 手动验证 Checklist
-
-> Photo Detail Viewer（commit `050707c`）已通过 Playwright 自测 12/12，剩 3 项需要人眼/人手感确认。脚本模拟不了。
-
-### 1. 🐢 慢速网络（3G throttle）
-- **怎么测**：DevTools → Network → Throttling: **Slow 3G**
-- **操作**：点开任意 cluster → 进 viewer → 连续按 → 翻 5 张
-- **期望**：
-  - 翻页不会卡死（prev/current/next 预加载策略生效）
-  - 图片加载失败时出现"重试"按钮（不是空白）
-  - `/p/{key}` URL 仍然同步
-
-### 2. 👆 快速连续切换
-- **怎么测**：打开 viewer 后 100-200ms 内狂点 → 键（或桌面左右区）
-- **操作**：连点 20 次，看会不会跳错 / 卡死 / 计数错位
-- **期望**：
-  - `transitioningRef` 防 transition 重入工作（不会跳 2 张）
-  - 键盘不会把 textarea 评论框的输入抢走
-  - like/comment 计数不会被双击 +1
-
-### 3. 📐 Layout Shift 视觉检查
-- **怎么测**：DevTools → Performance → 录制 → 在 viewer 里翻 5-10 张
-- **操作**：看 Layout Shifts 面板有没有红色 CLS
-- **期望**：
-  - **0 Shift**（aspect-ratio cache + 容器预留比例生效）
-  - controls / position indicator 不抖动
+![桌面端首页](./screenshots/desktop-home-full.png)
+![移动端首页](./screenshots/mobile-final.png)
 
 ---
 
-## 隐私口径（先在心里挂上）
+## 核心功能
 
-- 默认私人；公开档位只暴露城市级 GPS，不暴露精确 lat/lng
-- `visibility` 字段从一开始进 schema，避免后置补丁
+### 🌍 3D 地球仪（首页）
+- **d3-geo 手绘地球**：SVG 大陆 + 海洋，缓慢自动旋转
+- 照片按 GPS 投射成地球上的**标记点**；同位置多张照片聚合为**集群徽章**，点击展开
+- 交互：
+  - 拖拽旋转（支持 2 指捏合缩放手势，pinch 后单指仍可继续旋转）
+  - 滚轮 / 双指缩放，放大到接近城市尺度
+  - 悬停标记弹出照片缩略图
+
+### ⏳ 时间轴（首页底部）
+- 一条从 **1990.11 到「现在」** 的进度条，每张照片是一个章节刻度
+- 拖动游标按 **±15 天窗口** 过滤地球上的照片标记
+- **播放器式控制**：⏮ ▶ ⏭ + 倍速（0.5× / 1× / 2× / 4×），自动沿时间线播放；空格键播放/暂停
+- 桌面端悬停显示日期提示，拖动时显示 ±窗口内照片缩略图
+
+### 🔍 搜索（桌面 + 移动端）
+- 按 **文件名 / 地点 / 分类** 实时过滤
+- 输入即显示**匹配计数**与**缩略图预览下拉**（前 6 张），点击直接打开照片
+- 快捷键 `/` 聚焦搜索框
+
+### 📅 On This Day「历史上这一天」
+- 展示往年同一天（去年、前年…）拍摄的照片 —— 每年生日 / 纪念日翻一翻
+
+### ▶ 时间旅行 & 🌏 人生足迹
+- **时间旅行**：按年月重看生活片段（视频时间线 + 照片回放）
+- **人生足迹**：把照片里的地点汇成一张专属地图（城市 / 国家分组浏览）
+
+### 📷 上传与自动整理（/admin/upload，管理员）
+- 批量上传（最多 30 张），**自动读取 EXIF** 的拍摄时间、GPS、相机型号
+- 默认**清除原图 GPS**（隐私保护）；可选「保留原图 EXIF GPS 坐标」
+- 自动生成 **256×256 WebP 缩略图**
+- 多标签分类（人物 / 风景…），上传后可随时重新整理
+- 无 GPS 的老照片可手动选地点（地图选点 / 使用当前位置）
+
+### 🖼️ PhotoViewer 照片查看器
+- 全屏照片浏览，键盘 ← → / 点击翻页，相邻照片预加载
+- 慢网自动出现「重试」；支持点赞、评论
+- **可见性控制**：`private`（仅自己）/ `unlisted`（有链接可看）/ `public`（公开可索引）
+
+### 其他
+- 独立浏览页：[/timeline](./app/timeline/page.tsx) 按月浏览、[/stats](./app/stats/page.tsx) 足迹统计（国家/城市）、[/photos/[id]](./app/photos) 照片分享落地页
+- **中 / 日双语**（站内一键切换），暗色 / 浅色 / 跟随系统主题
+- **PWA**：可安装（standalone）、manifest + 图标
+- 新访客欢迎横幅 + 登录后 3 步引导（OnboardingFlow）
+
+---
+
+## 页面地图
+
+| 路由 | 说明 | 访问 |
+| --- | --- | --- |
+| `/` | 首页：3D 地球 + 时间轴 + 搜索 | 公开（未登录可看公开风景照） |
+| `/welcome` | 产品介绍页（营销/SEO） | 公开 |
+| `/login` | 邮箱 + 密码登录/注册 | 公开 |
+| `/admin/upload` | 上传照片（批量 + EXIF） | 管理员 |
+| `/admin/photos` | 照片管理（编辑地点 / 标签 / 可见性 / 删除） | 管理员 |
+| `/photos/[id]` | 单张照片分享页（public/unlisted） | 视可见性 |
+| `/timeline` | 按月浏览照片 | 公开风景照 |
+| `/stats` | 足迹统计（国家 / 城市） | 公开 |
+| `/upload` | 旧入口，302 → `/admin/upload` | 重定向 |
+
+---
+
+## 技术栈
+
+| 层 | 选型 |
+| --- | --- |
+| 框架 | Next.js 15（App Router）+ React 19 + TypeScript |
+| 样式 | Tailwind CSS v4 |
+| 地球 | **d3-geo** + topojson（world-atlas 国家数据），纯 SVG 渲染 |
+| 地图选点 | MapLibre GL + OpenFreeMap 瓦片 |
+| Auth / 数据库 | Supabase（Auth + Postgres，RLS 权限控制） |
+| 对象存储 | Cloudflare R2（签名 URL 直传，不经应用服务器） |
+| 图片处理 | sharp（缩略图）+ piexifjs（EXIF GPS 剥离）|
+| EXIF 读取 | exifr（浏览器端读 takenAt / GPS / Make / Model） |
+| i18n | 轻量自研字典（zh-Hans / ja），Cookie 持久化 |
+| 测试 | Playwright（E2E：转场 / 手势 / viewer / 响应式脚本见 `scripts/`） |
+
+---
+
+## 上传数据链路
+
+```
+选择图片 → 浏览器 exifr 读 EXIF
+        → 可选剥离 GPS (piexifjs)
+        → POST /api/upload-url 拿 R2 签名 URL
+        → 直传 R2（不经应用服务器）
+        → 写一行到 Supabase photos 表
+        → /api/process-thumbnail 生成 256×256 WebP 缩略图
+        → 首页 Globe / 时间轴 / 搜索自动出现
+```
+
+照片**默认私密**：首页只对访客展示 RLS 过滤后的 public 风景照；登录用户看到自己的全部照片；`/admin/*` 由 middleware + 服务端双重管理员校验。
+
+---
+
+## 起步
+
+### 1. 环境变量
+
+复制 `.env.example` 为 `.env.local` 并填写：
+
+```
+# Cloudflare R2（对象存储）
+R2_ACCOUNT_ID=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+R2_BUCKET=
+R2_PUBLIC_BASE=https://pub-xxxxxxxxxxxx.r2.dev
+
+# Supabase（Auth + Postgres）
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+```
+
+参考 Supabase 建表 SQL（photos / comments / likes…）与 RLS 策略 —— 见项目历史 `infra/` 迁移说明（categories、location_name、thumbnail 等列）。
+
+### 2. 安装并运行
+
+```bash
+npm install
+npm run dev        # http://localhost:3000
+```
+
+生产模式（本仓库测试都用生产构建，避免 dev HMR 干扰）：
+
+```bash
+npm run build && npm run start
+```
+
+### 3. 类型检查与测试
+
+```bash
+npm run typecheck
+node scripts/test-touch-gesture.mjs      # 移动端 Globe 手势（pinch/rotate）
+node scripts/test-photo-viewer.mjs       # PhotoViewer 翻页 / 键盘 / 预加载
+node scripts/test-viewer-responsive.mjs  # viewer 响应式
+```
+
+---
+
+## 部署
+
+- **Vercel**（生产，GitHub 集成自动部署 `main` 分支）
+- 在 Vercel 项目环境变量里配置上述 R2 + Supabase 变量
+- 域名：`lifeframe.frank2025.com`
+
+---
+
+## 目录结构
+
+```
+app/
+  page.tsx                首页（Hero Globe + Search + Timeline 宿主）
+  layout.tsx              全局 layout：Header / i18n / 主题 / Onboarding / PWA
+  welcome/page.tsx        产品介绍页
+  login/page.tsx          登录/注册
+  admin/upload/page.tsx   上传页（管理员）
+  admin/photos/page.tsx   照片管理
+  admin/page.tsx          管理后台
+  photos/[id]/page.tsx    照片分享落地页
+  timeline/page.tsx       按月浏览
+  stats/page.tsx          足迹统计
+  api/                    upload-url / process-thumbnail / photos 评论/点赞/可见性等
+components/
+  Globe.tsx               d3-geo 3D 地球（拖拽/缩放/pinch + 标记集群）
+  HomeGallery.tsx         首页编排：Globe + 时间轴 + 搜索 + 弹层
+  Timeline.tsx            时间轴（播放/倍速/±15天窗口）
+  TimeTravel.tsx          时间旅行弹层
+  LifeJourney.tsx         人生足迹弹层
+  SearchBox.tsx           搜索框（计数 + 缩略图下拉）
+  PhotoViewer.tsx         全屏照片查看器
+  FeaturesGrid.tsx        首页功能演示卡（SVG demo）
+  OnboardingFlow.tsx      登录后 3 步引导
+  WelcomeBanner.tsx       访客欢迎横幅
+  LifeFrameLogo.tsx / HomeLogo.tsx    Logo
+  SiteFooter.tsx          统一页脚
+  ThemeToggle.tsx / LanguageSwitcher.tsx / PWARegistrar.tsx ...
+lib/
+  supabase.ts             类型 + 服务端客户端
+  supabase-browser.ts / supabase-server.ts
+  permissions.ts          Viewer / 可见性 / 管理员判断
+  r2.ts                   R2 签名 URL
+  exif.ts / exif-strip.ts EXIF 读取与 GPS 剥离
+  photo-url.ts            图片 URL 解析
+  i18n.ts / i18n-server.ts 双语字典 + Cookie locale
+  countries.ts            world-atlas 国家地理数据
+scripts/                  Playwright 测试脚本
+screenshots/              开发过程中的验证截图
+```
+
+---
+
+## 作者
+
+Frank Ding —— 个人项目。意见 / 建议：<dingfeng901112@gmail.com>
