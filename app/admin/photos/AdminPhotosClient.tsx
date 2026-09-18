@@ -50,6 +50,48 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
   const [visibilityTarget, setVisibilityTarget] = useState<
     'public' | 'unlisted' | 'private' | null
   >(null);
+  // Frank #0906: bulk modal now also edits capture time + place,
+  // not just categories/visibility. Two-step state machine is
+  // driven by `bulkStep` (1 = pick everything, 2 = confirm) now
+  // that a category pick is no longer mandatory — the user may
+  // want to fix only the date or only the place.
+  //   bulkTakenAt:  <input type="datetime-local"> value, '' = keep
+  //   bulkLocation: free-text place name, '' = keep
+  //   bulkLat/Lng:  optional coordinates as strings (parsed on
+  //                 apply); '' = keep existing coordinates
+  const [bulkStep, setBulkStep] = useState<1 | 2>(1);
+  const [bulkTakenAt, setBulkTakenAt] = useState<string>('');
+  const [bulkLocation, setBulkLocation] = useState<string>('');
+  const [bulkLat, setBulkLat] = useState<string>('');
+  const [bulkLng, setBulkLng] = useState<string>('');
+
+  /** Reset every transient field of the bulk-edit modal. Called on
+   *  every close path (backdrop click, 取消, successful apply) so
+   *  reopening lands on a clean step-1 picker instead of stale
+   *  targets from the previous run. */
+  function resetBulkModal() {
+    setCategoryModalOpen(false);
+    setBulkStep(1);
+    setCategoryTarget(null);
+    setVisibilityTarget(null);
+    setBulkTakenAt('');
+    setBulkLocation('');
+    setBulkLat('');
+    setBulkLng('');
+  }
+
+  /** True when the admin has picked at least one thing to change.
+   *  Gates the step-1 「下一步」 button so an empty apply can't be
+   *  fired (the route would reject it anyway — this is the UX
+   *  half of the same guard). */
+  const hasBulkChanges = Boolean(
+    categoryTarget ||
+      visibilityTarget ||
+      bulkTakenAt.trim() ||
+      bulkLocation.trim() ||
+      bulkLat.trim() ||
+      bulkLng.trim(),
+  );
 
   // Frank #7117 #2: per-photo edit modal. The 'editingPhoto'
   // gate drives the conditional rendering — null = no modal;
@@ -195,33 +237,49 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
     });
   }
 
-  // Frank #7108 #3: bulk-set categories to a single value across
-  // every selected photo. Replaces each photo's categories array
-  // with [target] (not toggle/append) — Frank #7108 phrased this
-  // as "修改为 人物 或者 风景", which is a SET semantic. The route
-  // handler whitelists categories server-side so even if a future
-  // client sends a bogus value it'll be silently dropped.
-  function applyBulkCategory(
-    target: 'person' | 'scenery',
-    visibility: 'public' | 'unlisted' | 'private' | null,
-  ) {
+  // Frank #7108 #3 / Frank #0906: bulk-apply the admin's chosen
+  // changes across every selected photo. Any subset of:
+  //   - categories   (replace with a single value)
+  //   - visibility   (optional)
+  //   - taken_at     (optional, uniform timestamp)
+  //   - location_name + optional lat/lng
+  // At least one field must be set — the guard below rejects a
+  // no-op apply so the user can't fire an empty write.
+  // The route handler whitelists / validates every field
+  // server-side.
+  function applyBulkUpdates() {
     if (selected.size === 0) return;
+
+    const updates: {
+      categories?: string[];
+      visibility?: 'public' | 'unlisted' | 'private';
+      taken_at?: string;
+      location_name?: string;
+      lat?: number;
+      lng?: number;
+    } = {};
+
+    if (categoryTarget) updates.categories = [categoryTarget];
+    if (visibilityTarget) updates.visibility = visibilityTarget;
+    if (bulkTakenAt.trim()) {
+      const parsed = new Date(bulkTakenAt);
+      if (!isNaN(parsed.getTime())) updates.taken_at = parsed.toISOString();
+    }
+    const loc = bulkLocation.trim();
+    if (loc) updates.location_name = loc;
+    const latNum = bulkLat.trim() === '' ? NaN : Number(bulkLat);
+    const lngNum = bulkLng.trim() === '' ? NaN : Number(bulkLng);
+    if (Number.isFinite(latNum)) updates.lat = latNum;
+    if (Number.isFinite(lngNum)) updates.lng = lngNum;
+
+    if (Object.keys(updates).length === 0) {
+      setError('请至少选择一项要修改的内容');
+      return;
+    }
+
     setError(null);
     startTransition(async () => {
       try {
-        // Frank #7131 #5: include visibility in the updates payload
-        // only when the user picked a non-null target. Null means
-        // "保持原样" — the bulk-update route already whitelists
-        // visibility (private/unlisted/public) so we send only
-        // valid values; passing null = omit the key from updates.
-        const updates: {
-          categories: string[];
-          visibility?: 'public' | 'unlisted' | 'private';
-        } = {
-          categories: [target],
-        };
-        if (visibility) updates.visibility = visibility;
-
         const res = await fetch('/api/admin/photos/bulk-update', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -233,31 +291,36 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
         if (!res.ok) {
           const text = await res.text();
           throw new Error(
-            `批量分类失败 ${res.status}: ${text.slice(0, 160)}`,
+            `批量修改失败 ${res.status}: ${text.slice(0, 160)}`,
           );
         }
         const json = (await res.json()) as { updated?: number };
-        // Patch local state immediately so per-tile category
-        // badges (👤 / 🏞️) and visibility label flip on next
-        // paint; router.refresh() syncs /stats / /timeline counts.
+        // Patch local state immediately so per-tile badges / dates
+        // / place labels flip on next paint; router.refresh() syncs
+        // /stats / /timeline counts.
         setPhotos((ps) =>
           ps.map((p) =>
             selected.has(p.key)
               ? {
                   ...p,
-                  categories: [target],
-                  ...(visibility ? { visibility } : {}),
+                  ...(updates.categories
+                    ? { categories: updates.categories }
+                    : {}),
+                  ...(updates.visibility
+                    ? { visibility: updates.visibility }
+                    : {}),
+                  ...(updates.taken_at ? { taken_at: updates.taken_at } : {}),
+                  ...(updates.location_name
+                    ? { location_name: updates.location_name }
+                    : {}),
+                  ...(updates.lat !== undefined ? { lat: updates.lat } : {}),
+                  ...(updates.lng !== undefined ? { lng: updates.lng } : {}),
                 }
               : p,
           ),
         );
         setSelected(new Set());
-        setCategoryModalOpen(false);
-        // Frank #7115: clear confirm-step targets so reopening
-        // the modal lands back on step 1 (the picker), not on a
-        // stale step 2 with previous run's targets still set.
-        setCategoryTarget(null);
-        setVisibilityTarget(null);
+        resetBulkModal();
         router.refresh();
         if (json.updated === 0) {
           setError('没找到对应照片，可能已被删除');
@@ -433,7 +496,7 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
               disabled={pending}
               className="rounded border border-amber-400/40 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-200 transition hover:border-amber-300 hover:bg-amber-500/20 disabled:opacity-50"
             >
-              📁 批量分类
+              📁 批量修改
             </button>
             <button
               type="button"
@@ -574,20 +637,22 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
         </div>
       )}
 
-      {/* Frank #7108 #3 / fixed in #7115: bulk-categories modal is
-          now a two-step picker→confirm flow. The original single-
-          step design (pick → apply in one click) felt too eager to
-          Frank — he explicitly wanted a 确认 step between picking
-          the target category and the action firing (ref: #7115
-          "批量分类的弹框，选完分类之后，没有确认按键"). Step 1
-          (categoryTarget = null) shows the picker cards; clicking
-          a card sets categoryTarget and the modal swaps to step 2,
-          a confirm surface with the chosen target highlighted and
-          two buttons: ← 返回 / 确认应用. Only the 确认应用 button
-          calls applyBulkCategory. Backdrop click + the step-1
-          取消 button both reset both modal states. The single-
-          modal-instance design (vs two stacked modals) keeps the
-          state machine flat: just (open, target). */}
+      {/* Frank #7108 #3 / #7115 / Frank #0906: bulk-edit modal.
+          Two-step picker→confirm flow (#7115 added the confirm step
+          after Frank asked for one: "批量分类的弹框，选完分类之后，
+          没有确认按键"). Frank #0906 extended it from
+          categories-only to a general bulk edit: categories,
+          capture time (taken_at), place (location_name + optional
+          lat/lng) and visibility can each be set or left alone.
+          Step 1 = pick everything (bulkStep === 1); the 「下一步」
+          button is disabled until at least one change is picked
+          (hasBulkChanges). Step 2 = confirm, listing exactly what
+          will be written; only 确认应用 calls applyBulkUpdates.
+          Every close path goes through resetBulkModal() so
+          reopening lands on a clean step 1. The single-instance
+          design (vs two stacked modals) keeps the state machine
+          flat: (open, step, categoryTarget, visibilityTarget,
+          bulkTakenAt, bulkLocation, bulkLat, bulkLng). */}
       {categoryModalOpen && (
         <div
           role="dialog"
@@ -595,67 +660,135 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6 backdrop-blur-sm"
           onClick={() => {
             if (pending) return;
-            setCategoryModalOpen(false);
-            setCategoryTarget(null);
+            resetBulkModal();
           }}
         >
           <div
             className="w-full max-w-md rounded-lg border border-amber-500/40 bg-[var(--bg-elevated)] p-6 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            {!categoryTarget ? (
-              // Step 1 — picker
+            {bulkStep === 1 ? (
+              // Step 1 — picker. Every field is optional: the user
+              // may fix only the date, only the place, only the
+              // category, or any combination. Nothing is written
+              // until the confirm step.
               <>
-                <h3 className="text-xl font-medium text-white">🔁 批量分类</h3>
+                <h3 className="text-xl font-medium text-white">🔁 批量修改</h3>
                 <p className="mt-3 text-sm text-white/70">
-                  将选中的{' '}
+                  将对选中的{' '}
                   <strong className="text-amber-300">{selected.size}</strong>{' '}
-                  张照片的分类替换为：
+                  张照片应用以下修改（留空的项目保持不变）：
                 </p>
-                <div className="mt-5 grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setCategoryTarget('person')}
-                    disabled={pending}
-                    className="rounded-lg border border-white/15 bg-white/[0.04] p-4 text-center transition hover:border-cyan-400/60 hover:bg-cyan-400/10 disabled:opacity-50"
-                  >
-                    <span className="block text-3xl" aria-hidden="true">
-                      👤
-                    </span>
-                    <span className="mt-2 block text-sm font-medium text-white">
-                      人物
-                    </span>
-                    <span className="mt-1 block text-[10px] uppercase tracking-wider text-white/40">
-                      person
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCategoryTarget('scenery')}
-                    disabled={pending}
-                    className="rounded-lg border border-white/15 bg-white/[0.04] p-4 text-center transition hover:border-emerald-400/60 hover:bg-emerald-400/10 disabled:opacity-50"
-                  >
-                    <span className="block text-3xl" aria-hidden="true">
-                      🏞️
-                    </span>
-                    <span className="mt-2 block text-sm font-medium text-white">
-                      风景
-                    </span>
-                    <span className="mt-1 block text-[10px] uppercase tracking-wider text-white/40">
-                      scenery
-                    </span>
-                  </button>
+
+                {/* 分类 — 可选。点击选中，再点一次取消。 */}
+                <p className="mt-5 text-xs text-white/40">分类（可选）：</p>
+                <div className="mt-1 grid grid-cols-2 gap-3">
+                  {(
+                    [
+                      {
+                        value: 'person',
+                        label: '人物',
+                        emoji: '👤',
+                        activeCls: 'border-cyan-400/60 bg-cyan-400/10',
+                      },
+                      {
+                        value: 'scenery',
+                        label: '风景',
+                        emoji: '🏞️',
+                        activeCls: 'border-emerald-400/60 bg-emerald-400/10',
+                      },
+                    ] as const
+                  ).map((opt) => {
+                    const active = categoryTarget === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() =>
+                          setCategoryTarget(active ? null : opt.value)
+                        }
+                        disabled={pending}
+                        className={`rounded-lg border p-3 text-center transition disabled:opacity-50 ${
+                          active
+                            ? `${opt.activeCls} ring-2 ring-amber-400/30`
+                            : 'border-white/15 bg-white/[0.04] hover:border-white/40'
+                        }`}
+                      >
+                        <span className="block text-2xl" aria-hidden="true">
+                          {opt.emoji}
+                        </span>
+                        <span className="mt-1 block text-sm font-medium text-white">
+                          {opt.label}
+                        </span>
+                        <span className="mt-0.5 block text-[10px] uppercase tracking-wider text-white/40">
+                          {opt.value}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
-                <p className="mt-4 text-xs text-white/40">
-                {/* Frank #7131 #5: visibility picker (optional).
-                    4 options: 🌍 公开 / 🔗 不公开 / 🔒 私密 / —
-                    保持原样 (default — null means don't touch
-                    visibility, only category gets updated). State
-                    persists across the picker→confirm step so the
-                    user can adjust visibility in either step. */}
-                <p className="mt-5 text-xs text-white/40">
-                  可选同时调整可见性：
+
+                {/* 拍摄时间 — 可选。批量设为同一时刻。 */}
+                <p className="mt-5 text-xs text-white/40">拍摄时间（可选）：</p>
+                <div className="mt-1 flex items-center gap-2">
+                  <input
+                    type="datetime-local"
+                    value={bulkTakenAt}
+                    onChange={(e) => setBulkTakenAt(e.target.value)}
+                    disabled={pending}
+                    aria-label="批量设置拍摄时间"
+                    className="min-w-0 flex-1 rounded border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-white [color-scheme:dark] disabled:opacity-50"
+                  />
+                  {bulkTakenAt && (
+                    <button
+                      type="button"
+                      onClick={() => setBulkTakenAt('')}
+                      disabled={pending}
+                      className="rounded border border-white/15 px-2 py-2 text-xs text-white/70 transition hover:border-white/40 hover:text-white disabled:opacity-50"
+                    >
+                      清除
+                    </button>
+                  )}
+                </div>
+
+                {/* 拍摄地点 — 可选。地点名 + 可选经纬度。 */}
+                <p className="mt-4 text-xs text-white/40">拍摄地点（可选）：</p>
+                <input
+                  type="text"
+                  value={bulkLocation}
+                  onChange={(e) => setBulkLocation(e.target.value)}
+                  placeholder="地点名，例如：北京市, 中国"
+                  disabled={pending}
+                  aria-label="批量设置拍摄地点名称"
+                  className="mt-1 w-full rounded border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder-white/30 disabled:opacity-50"
+                />
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <input
+                    type="number"
+                    step="any"
+                    value={bulkLat}
+                    onChange={(e) => setBulkLat(e.target.value)}
+                    placeholder="纬度 lat（可选）"
+                    disabled={pending}
+                    aria-label="批量设置纬度"
+                    className="rounded border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder-white/30 disabled:opacity-50"
+                  />
+                  <input
+                    type="number"
+                    step="any"
+                    value={bulkLng}
+                    onChange={(e) => setBulkLng(e.target.value)}
+                    placeholder="经度 lng（可选）"
+                    disabled={pending}
+                    aria-label="批量设置经度"
+                    className="rounded border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder-white/30 disabled:opacity-50"
+                  />
+                </div>
+                <p className="mt-1 text-[11px] text-white/35">
+                  只填地点名 → 仅更新名称；同时填经纬度 → 也会移动地球上的标记点。
                 </p>
+                {/* 可见性 — 可选。保持原样 = 不改。 */}
+                <p className="mt-5 text-xs text-white/40">可见性（可选）：</p>
                 <div className="mt-1 grid grid-cols-4 gap-2">
                   {(
                     [
@@ -688,20 +821,26 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
                     );
                   })}
                 </div>
-                                  选定之后会有确认步骤。
+                <p className="mt-4 text-xs text-white/40">
+                  选定之后会有确认步骤。
                 </p>
                 <div className="mt-6 flex justify-end gap-2">
                   <button
                     type="button"
-                    onClick={() => {
-                      setCategoryModalOpen(false);
-                      setCategoryTarget(null);
-                      setVisibilityTarget(null);
-                    }}
+                    onClick={resetBulkModal}
                     disabled={pending}
                     className="rounded border border-white/15 px-4 py-2 text-sm text-white/80 transition hover:border-white/40 hover:text-white disabled:opacity-50"
                   >
                     取消
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBulkStep(2)}
+                    disabled={pending || !hasBulkChanges}
+                    title={hasBulkChanges ? undefined : '请至少选择一项要修改的内容'}
+                    className="rounded bg-amber-500 px-4 py-2 text-sm font-medium text-black transition hover:bg-amber-400 disabled:opacity-40"
+                  >
+                    下一步 →
                   </button>
                 </div>
               </>
@@ -710,30 +849,80 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
               <>
                 <h3 className="text-xl font-medium text-white">确认应用？</h3>
                 <p className="mt-3 text-sm text-white/70">
-                  将选中的{' '}
+                  将对选中的{' '}
                   <strong className="text-amber-300">{selected.size}</strong>{' '}
-                  张照片的分类替换为：
+                  张照片应用以下修改：
                 </p>
-                <div className="mt-4 flex items-center justify-center gap-3 rounded-lg border border-amber-500/40 bg-amber-500/5 p-5">
-                  <span className="text-4xl" aria-hidden="true">
-                    {categoryTarget === 'person' ? '👤' : '🏞️'}
-                  </span>
-                  <div className="text-left">
-                    <span className="block text-base font-medium text-white">
-                      {categoryTarget === 'person' ? '人物' : '风景'}
-                    </span>
-                    <span className="mt-0.5 block text-[10px] uppercase tracking-wider text-white/40">
-                      {categoryTarget}
-                    </span>
-                  </div>
-                </div>
+                <ul className="mt-4 space-y-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-4 text-sm text-white">
+                  {categoryTarget && (
+                    <li className="flex items-center gap-2">
+                      <span aria-hidden="true">
+                        {categoryTarget === 'person' ? '👤' : '🏞️'}
+                      </span>
+                      <span>
+                        分类 →{' '}
+                        <strong>
+                          {categoryTarget === 'person' ? '人物' : '风景'}
+                        </strong>
+                      </span>
+                    </li>
+                  )}
+                  {bulkTakenAt && (
+                    <li className="flex items-center gap-2">
+                      <span aria-hidden="true">🕒</span>
+                      <span>
+                        拍摄时间 → <strong>{formatBulkDateTime(bulkTakenAt)}</strong>
+                      </span>
+                    </li>
+                  )}
+                  {bulkLocation.trim() && (
+                    <li className="flex items-center gap-2">
+                      <span aria-hidden="true">📍</span>
+                      <span>
+                        拍摄地点 → <strong>{bulkLocation.trim()}</strong>
+                      </span>
+                    </li>
+                  )}
+                  {(bulkLat.trim() || bulkLng.trim()) && (
+                    <li className="flex items-center gap-2">
+                      <span aria-hidden="true">🧭</span>
+                      <span>
+                        坐标 →{' '}
+                        <strong>
+                          lat {bulkLat.trim() || '—'}, lng {bulkLng.trim() || '—'}
+                        </strong>
+                      </span>
+                    </li>
+                  )}
+                  {visibilityTarget && (
+                    <li className="flex items-center gap-2">
+                      <span aria-hidden="true">
+                        {visibilityTarget === 'public'
+                          ? '🌍'
+                          : visibilityTarget === 'unlisted'
+                            ? '🔗'
+                            : '🔒'}
+                      </span>
+                      <span>
+                        可见性 →{' '}
+                        <strong>
+                          {visibilityTarget === 'public'
+                            ? '公开'
+                            : visibilityTarget === 'unlisted'
+                              ? '不公开'
+                              : '私密'}
+                        </strong>
+                      </span>
+                    </li>
+                  )}
+                </ul>
                 <p className="mt-4 text-xs text-white/40">
-                  设为同一分类时无变化；切换时直接替换（不合并）。
+                  分类为直接替换（不合并）；时间 / 地点会覆盖所选照片的原值。
                 </p>
                 <div className="mt-6 flex justify-end gap-2">
                   <button
                     type="button"
-                    onClick={() => setCategoryTarget(null)}
+                    onClick={() => setBulkStep(1)}
                     disabled={pending}
                     className="rounded border border-white/15 px-4 py-2 text-sm text-white/80 transition hover:border-white/40 hover:text-white disabled:opacity-50"
                   >
@@ -741,7 +930,7 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
                   </button>
                   <button
                     type="button"
-                    onClick={() => applyBulkCategory(categoryTarget, visibilityTarget)}
+                    onClick={applyBulkUpdates}
                     disabled={pending}
                     className="rounded bg-amber-500 px-4 py-2 text-sm font-medium text-black transition hover:bg-amber-400 disabled:opacity-50"
                   >
@@ -938,6 +1127,16 @@ export function AdminPhotosClient({ initialPhotos }: Props) {
       )}
     </div>
   );
+}
+
+/** Render a `<input type="datetime-local">` value as a readable
+ *  `YYYY-MM-DD HH:mm` string for the confirm step. Falls back to
+ *  the raw value if it somehow doesn't parse. */
+function formatBulkDateTime(value: string): string {
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return value;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function PhotoTile({
