@@ -304,7 +304,7 @@ function CityCard({
     <section
       id={`city-${city}-${country}`}
       data-stats-loc={`${city} ${country}`}
-      className="rounded-lg border border-white/10 bg-white/[0.02] dark:bg-white/[0.02]"
+      className="rounded-lg border border-black/10 bg-white/[0.5] dark:border-white/10 dark:bg-white/[0.02]"
     >
       <CollapseGroupButton
         title={city}

@@ -74,7 +74,7 @@ export function CollapseGroupButton({
             ▶
           </span>
           <span className="flex flex-col gap-0">
-            <span className="text-base font-medium text-white">
+            <span className="text-base font-medium text-[var(--text-primary)]">
               {title}
             </span>
             {subtitle && (
