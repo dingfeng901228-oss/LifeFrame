@@ -109,14 +109,14 @@ export function StatsSearch({ total }: Props) {
           onChange={(e) => setQuery(e.target.value)}
           placeholder={placeholder}
           aria-label="搜索城市或国家"
-          className="min-h-[44px] w-full rounded-full border border-white/15 bg-white/[0.04] px-4 pr-10 text-sm text-white placeholder-white/40 focus:border-white/40 focus:outline-none"
+          className="min-h-[44px] w-full rounded-full border border-black/15 bg-white/[0.04] px-4 pr-10 text-sm text-black placeholder-black/40 focus:border-black/40 focus:outline-none dark:border-white/15 dark:text-white dark:placeholder-white/40 dark:focus:border-white/40"
         />
         {query && (
           <button
             type="button"
             onClick={() => setQuery('')}
             aria-label="清除搜索"
-            className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-8 w-8 items-center justify-center rounded-full text-white/50 transition hover:bg-white/10 hover:text-white"
+            className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex h-8 w-8 items-center justify-center rounded-full text-black/50 transition hover:bg-black/10 hover:text-black dark:text-white/50 dark:hover:bg-white/10 dark:hover:text-white"
           >
             ×
           </button>
