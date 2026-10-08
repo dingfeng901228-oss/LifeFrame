@@ -15,6 +15,11 @@ export const metadata: Metadata = {
 
 type PhotoRow = {
   location_name: string | null;
+  key: string;
+  filename: string;
+  taken_at: string | null;
+  lat: number | null;
+  lng: number | null;
 };
 
 type LocationParts = { city: string; country: string };
@@ -111,7 +116,7 @@ export default async function StatsPage() {
     const supabase = await createSupabaseServerClient();
     const { data } = await supabase
       .from('photos')
-      .select('location_name')
+      .select('location_name, key, filename, taken_at, lat, lng')
       .in('visibility', ['public', 'unlisted']);
     photos = (data ?? []) as PhotoRow[];
   } catch {
@@ -168,6 +173,31 @@ export default async function StatsPage() {
     }))
     .sort((a, b) => b.total - a.total);
 
+  // Frank #0906 round-14 cont.: per-photo rows for the detailed
+  // export ("one row per photo" CSV/JSON). Sort by taken_at
+  // ascending so the export reads as a chronological log; photos
+  // without taken_at land at the bottom (alphabetical by key
+  // for stable order).
+  const detailedRows = photos
+    .map((p) => {
+      const loc = parseLocation(p.location_name);
+      return {
+        country: loc?.country ?? '未分类',
+        city: loc?.city ?? p.location_name ?? '未分类',
+        takenAt: p.taken_at ?? '',
+        key: p.key,
+        filename: p.filename,
+        lat: p.lat,
+        lng: p.lng,
+      };
+    })
+    .sort((a, b) => {
+      if (a.takenAt && b.takenAt) return a.takenAt.localeCompare(b.takenAt);
+      if (a.takenAt) return -1;
+      if (b.takenAt) return 1;
+      return a.key.localeCompare(b.key);
+    });
+
   return (
     <main className="mx-auto max-w-4xl px-6 py-12">
       <header className="mb-10">
@@ -217,11 +247,14 @@ export default async function StatsPage() {
             <StatsExport
               locale={locale}
               rows={cities}
+              detailedRows={detailedRows}
               totalPhotos={totalPhotos}
               label={t(locale, 'stats.exportLabel')}
               buttonLabel={t(locale, 'stats.exportButton')}
               csvLabel={t(locale, 'stats.exportCsv')}
               jsonLabel={t(locale, 'stats.exportJson')}
+              csvDetailLabel={t(locale, 'stats.exportCsvDetail')}
+              jsonDetailLabel={t(locale, 'stats.exportJsonDetail')}
               downloadedLabel={t(locale, 'stats.exportDownloaded')}
             />
           </div>

@@ -572,6 +572,14 @@ const dict: Dict = {
     zh: 'JSON (结构化)',
     ja: 'JSON (構造化)',
   },
+  'stats.exportCsvDetail': {
+    zh: 'CSV (一照片一行)',
+    ja: 'CSV (写真 1 枚 1 行)',
+  },
+  'stats.exportJsonDetail': {
+    zh: 'JSON (每张照片详情)',
+    ja: 'JSON (写真ごとの詳細)',
+  },
   'stats.exportDownloaded': {
     zh: '已下载',
     ja: 'ダウンロード済み',
@@ -583,6 +591,14 @@ const dict: Dict = {
   'export.jsonHint': {
     zh: '完整嵌套结构，适合程序处理',
     ja: '完全なネスト構造、プログラム処理用',
+  },
+  'export.csvDetailHint': {
+    zh: '239 照片按拍摄时间排序',
+    ja: '239 枚を撮影時刻順で出力',
+  },
+  'export.jsonDetailHint': {
+    zh: '照片含 lat/lng/拍摄时间',
+    ja: 'lat/lng/撮影時刻を含む',
   },
   // Frank #0906 round-14 cont.: theme toggle tooltip labels.
   'theme.label': {
