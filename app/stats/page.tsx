@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { WorldDotMap } from '@/components/WorldDotMap';
+import { CollapseCountryButton } from '@/components/CollapseCountryButton';
 
 export const metadata: Metadata = {
   title: 'LifeFrame — 足迹统计',
@@ -23,21 +25,15 @@ type LocationParts = { city: string; country: string };
 function parseLocation(loc: string | null): LocationParts | null {
   if (!loc) return null;
   const parts = loc
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
   if (parts.length === 0) return null;
   const country = parts[parts.length - 1];
-  const city = parts[0];
-  return { city, country };
+  return { city: parts[0], country };
 }
 
 export default async function StatsPage() {
-  // Fetch public/unlisted photos for stats. RLS already excludes
-  // 'person' category photos for anon so this is automatic. The
-  // visibility filter keeps private photos out of the public stats.
-  //
-  // try/catch for build-time prerender (see /welcome fix in 5698787).
   let photos: PhotoRow[] = [];
   try {
     const supabase = await createSupabaseServerClient();
@@ -90,7 +86,16 @@ export default async function StatsPage() {
         </p>
       </header>
 
-      <div className="mb-10 grid grid-cols-3 gap-4 rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.02] p-6">
+      {/* Frank #0906 round-14 (Batch C): top row keeps the three
+          big-number tiles but adds a 1-row mini equirectangular
+          world map below, where each cyan dot is one country
+          (positioned by centroid, sized by photo count). Below
+          the map the country list is now collapsed by default
+          (Frank #7108 collapse pattern) so the page is one
+          screenful on desktop. The map dots and the country
+          cards are linked: clicking a dot expands the matching
+          card via the CollapseCountryButton toggle. */}
+      <div className="mb-8 grid grid-cols-3 gap-4 rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.02] p-6">
         <StatBox label="照片" value={totalPhotos} />
         <StatBox label="国家" value={totalCountries} />
         <StatBox label="城市" value={totalCities} />
@@ -101,44 +106,64 @@ export default async function StatsPage() {
           还没有带位置的照片
         </p>
       ) : (
-        <div className="space-y-6">
-          {countries.map((c) => (
-            <section
-              key={c.country}
-              className="rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.02] p-5"
-            >
-              <div className="mb-3 flex items-baseline justify-between">
-                <h2 className="text-xl font-light text-black dark:text-white">
-                  {c.country}
-                </h2>
-                <span className="text-sm tabular-nums text-black/40 dark:text-white/40">
-                  {c.total} 张
-                </span>
-              </div>
-              <ul className="space-y-1.5">
-                {c.cities.map((city) => (
-                  <li
-                    key={city.city}
-                    className="flex items-baseline justify-between text-sm"
-                  >
-                    <span className="text-black/80 dark:text-white/80">
-                      📍 {city.city}
-                    </span>
-                    <span className="tabular-nums text-black/40 dark:text-white/40">
-                      {city.count}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))}
-        </div>
+        <>
+          <WorldDotMap
+            countries={countries}
+            onSelect={(country) => {
+              if (typeof window !== 'undefined') {
+                document
+                  .getElementById(`country-${country}`)
+                  ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }
+            }}
+          />
+          <div className="mt-8 space-y-3">
+            {countries.map((c) => (
+              <CountryCard key={c.country} country={c} />
+            ))}
+          </div>
+        </>
       )}
 
       <p className="mt-12 text-center text-sm text-black/40 dark:text-white/40">
         数据基于公开 + 不公开链接分享的照片（人物照片需登录可见）
       </p>
     </main>
+  );
+}
+
+function CountryCard({
+  country,
+}: {
+  country: { country: string; total: number; cities: Array<{ city: string; count: number }> };
+}) {
+  return (
+    <section
+      id={`country-${country.country}`}
+      className="rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.02]"
+    >
+      <CollapseCountryButton
+        title={country.country}
+        total={country.total}
+        cityCount={country.cities.length}
+      >
+        <ul className="space-y-1.5">
+          {country.cities.map((city) => (
+            <li
+              key={city.city}
+              className="flex items-baseline justify-between text-sm"
+            >
+              <span className="text-black/80 dark:text-white/80">
+                📍 {city.city}
+              </span>
+              <span className="tabular-nums text-black/40 dark:text-white/40">
+                {city.count}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </CollapseCountryButton>
+    </section>
   );
 }
 

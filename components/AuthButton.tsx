@@ -205,7 +205,7 @@ export function AuthButton() {
     return (
       <Link
         href="/login"
-        className="text-sm text-white/60 transition hover:text-white"
+        className="rounded-full border border-white/20 px-4 py-1 text-xs text-white/80 transition hover:border-white/40 hover:bg-white/5 hover:text-white"
       >
         {t(locale, 'auth.login')}
       </Link>
