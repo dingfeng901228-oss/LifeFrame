@@ -74,12 +74,25 @@ function parseLocation(loc: string | null): LocationParts | null {
     .map((s) => s.trim())
     .filter(Boolean);
   if (parts.length === 0) return null;
+  // Frank #0906 round-14 (round-14 cont.): single-segment inputs
+  // (e.g. just "威海市" with no country suffix) are common. Without
+  // handling, parseLocation returns {city: "威海市", country: "威海市"}
+  // — and the city card shows the same name twice. Treat
+  // single-segment as "city with unknown country" so it shows up
+  // in the city list (not lost) but doesn't duplicate the label.
+  if (parts.length === 1) {
+    return { city: parts[0], country: '未分类' };
+  }
   let country = parts[parts.length - 1];
   // Drop trailing admin levels until we hit something that looks
-  // like a real country name. If everything drops out, null.
+  // like a real country name. If everything drops out, fall back
+  // to "未分类" so the row stays in the city list.
   while (isAdminLevelCN(country) && parts.length > 1) {
     parts.pop();
     country = parts[parts.length - 1];
+  }
+  if (isAdminLevelCN(country)) {
+    country = '未分类';
   }
   return { city: parts[0], country };
 }
@@ -153,11 +166,11 @@ export default async function StatsPage() {
         <p className="text-xs tracking-[0.4em] text-black/40 dark:text-white/40 uppercase">
           Stats · §27
         </p>
-        <h1 className="mt-2 text-3xl font-light text-black dark:text-white">
+        <h1 className="mt-2 text-3xl font-light text-white">
           🌍 足迹统计
         </h1>
-        <p className="mt-2 text-sm text-black/40 dark:text-white/40">
-          按国家和城市分组的照片分布
+        <p className="mt-2 text-sm text-[var(--text-muted)]">
+          按城市分组的照片分布
         </p>
       </header>
 
@@ -170,7 +183,7 @@ export default async function StatsPage() {
           screenful on desktop. The map dots and the country
           cards are linked: clicking a dot expands the matching
           card via the CollapseCountryButton toggle. */}
-      <div className="mb-8 grid grid-cols-3 gap-4 rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.02] p-6">
+      <div className="mb-8 grid grid-cols-3 gap-4 rounded-lg border border-white/10 bg-white/[0.02] p-6">
         <StatBox label="照片" value={totalPhotos} />
         <StatBox label="国家" value={totalCountries} />
         <StatBox label="城市" value={totalCities} />
@@ -216,10 +229,18 @@ function CityCard({
   // (small grey text under the city name) so the geographic
   // context is still visible. id="city-<region>" matches what
   // the WorldDotMap dispatches via expandCountryCard().
+  //
+  // Frank #0906 round-14 (round-14 cont.): use `text-white` for
+  // the title and `[var(--text-primary)]` for the subtitle (CSS
+  // var) instead of `text-black dark:text-white`. The Stats page
+  // is dark-by-design (body bg black), and Tailwind's `dark:`
+  // variant only fires when <html class="dark"> is set — which
+  // depends on the theme bootstrap script and can lag behind
+  // first paint. Using the CSS var sidesteps that race entirely.
   return (
     <section
       id={`city-${city}-${country}`}
-      className="rounded-lg border border-black/10 bg-black/[0.02] dark:border-white/10 dark:bg-white/[0.02]"
+      className="rounded-lg border border-white/10 bg-white/[0.02] dark:bg-white/[0.02]"
     >
       <CollapseGroupButton
         title={city}
@@ -227,9 +248,8 @@ function CityCard({
         total={total}
         itemCount={undefined}
       >
-        <div className="text-xs text-black/55 dark:text-white/55">
+        <div className="text-xs text-[var(--text-muted)]">
           {total} 张照片摄于{city}
-          {total > 1 ? '' : ''}
         </div>
       </CollapseGroupButton>
     </section>
@@ -239,10 +259,10 @@ function CityCard({
 function StatBox({ label, value }: { label: string; value: number }) {
   return (
     <div className="text-center">
-      <div className="text-3xl font-light tabular-nums text-black dark:text-white">
+      <div className="text-3xl font-light tabular-nums text-white">
         {value}
       </div>
-      <div className="mt-1 text-xs uppercase tracking-widest text-black/40 dark:text-white/40">
+      <div className="mt-1 text-xs uppercase tracking-widest text-[var(--text-muted)]">
         {label}
       </div>
     </div>

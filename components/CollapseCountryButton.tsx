@@ -62,11 +62,11 @@ export function CollapseGroupButton({
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="flex w-full items-baseline justify-between gap-3 px-5 py-3 text-left transition hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+        className="flex w-full items-baseline justify-between gap-3 px-5 py-3 text-left transition hover:bg-white/[0.04]"
       >
         <span className="flex items-baseline gap-3">
           <span
-            className={`text-black/40 transition-transform dark:text-white/40 ${
+            className={`text-[var(--text-muted)] transition-transform ${
               open ? 'rotate-90' : ''
             }`}
             aria-hidden="true"
@@ -74,23 +74,23 @@ export function CollapseGroupButton({
             ▶
           </span>
           <span className="flex flex-col gap-0">
-            <span className="text-base font-medium text-black dark:text-white">
+            <span className="text-base font-medium text-white">
               {title}
             </span>
             {subtitle && (
-              <span className="text-[11px] text-black/45 dark:text-white/45">
+              <span className="text-[11px] text-[var(--text-muted)]">
                 {subtitle}
               </span>
             )}
           </span>
         </span>
-        <span className="flex items-baseline gap-3 text-sm tabular-nums text-black/40 dark:text-white/40">
+        <span className="flex items-baseline gap-3 text-sm tabular-nums text-[var(--text-muted)]">
           {itemCount && <span>{itemCount}</span>}
           <span>{total} 张</span>
         </span>
       </button>
       {open && (
-        <div className="border-t border-black/10 px-5 py-3 dark:border-white/10">
+        <div className="border-t border-white/10 px-5 py-3">
           {children}
         </div>
       )}
