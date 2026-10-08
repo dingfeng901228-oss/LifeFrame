@@ -186,7 +186,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <AuthButton />
           </nav>
         </header>
-        <main>{children}</main>
+        {/* Children render their own <main> so each page can
+            set its own max-width / padding without forcing the
+            layout's <main> to wrap them. (axe-core flagged
+            duplicate-main and landmark-unique previously when
+            the layout wrapped children in <main> and pages
+            ALSO opened <main>.) */}
+        {children}
         <PWARegistrar />
         {/* Frank #0906 round-13: top-of-page welcome banner for
             un-authenticated visitors. Mounted in the root layout

@@ -93,13 +93,13 @@ export default async function WelcomePage() {
       <main className="mx-auto max-w-3xl px-6 py-16 sm:py-24">
         <article>
           <header className="mb-16">
-            <p className="mb-4 text-xs tracking-[0.4em] text-black/40 dark:text-white/40 uppercase">
+            <p className="mb-4 text-xs tracking-[0.4em] text-black/60 dark:text-white/60 uppercase">
               {t(locale, 'welcome.hero.eyebrow')}
             </p>
             <h1 className="text-4xl font-light leading-tight text-black dark:text-white sm:text-5xl">
               {t(locale, 'welcome.hero.title')}
             </h1>
-            <p className="mt-3 text-sm tracking-widest text-black/40 dark:text-white/40">
+            <p className="mt-3 text-sm tracking-widest text-black/60 dark:text-white/60">
               {t(locale, 'welcome.hero.subtitle')}
             </p>
           </header>
@@ -136,7 +136,7 @@ export default async function WelcomePage() {
                 phrasing was heavier than the rest of the page
                 warranted. The mb-6 spacing on the next <p>
                 covers the gap. */}
-            <p className="mb-6 text-sm text-black/40 dark:text-white/40">
+            <p className="mb-6 text-sm text-black/60 dark:text-white/60">
               {t(locale, 'welcome.cta.hint')}
             </p>
             {/* Frank #7108 #4: dual-CTA. Primary 登录/注册 still

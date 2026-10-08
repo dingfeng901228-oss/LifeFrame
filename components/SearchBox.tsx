@@ -83,6 +83,7 @@ export function SearchBox({
           }}
           placeholder={t(locale, 'hero.searchPlaceholder')}
           aria-label={t(locale, 'hero.searchAriaLabel')}
+          role="combobox"
           aria-controls={dropdownId}
           aria-expanded={showDropdown}
           className="min-h-[44px] w-full rounded-full border border-black/15 dark:border-white/15 bg-white/90 dark:bg-white/5 px-4 pr-20 text-sm text-black dark:text-white placeholder-black/40 dark:placeholder-white/40 focus:border-black/40 dark:focus:border-white/40 focus:outline-none"

@@ -64,7 +64,7 @@ export default async function Home() {
         aria-labelledby="features-heading"
         className="mx-auto max-w-5xl px-6 py-16 sm:py-24"
       >
-        <p className="mb-2 text-xs tracking-[0.4em] text-black/40 dark:text-white/40 uppercase">
+        <p className="mb-2 text-xs tracking-[0.4em] text-black/60 dark:text-white/60 uppercase">
           {t(locale, 'features.eyebrow')}
         </p>
         <h2

@@ -60,7 +60,7 @@ function LoginInner({ locale }: { locale: Locale }) {
       <h1 className="text-2xl font-light text-black dark:text-white">
         {mode === 'signin' ? t(locale, 'login.title.signIn') : t(locale, 'login.title.signUp')}
       </h1>
-      <p className="mt-2 text-sm text-black/50 dark:text-white/50">
+      <p className="mt-2 text-sm text-black/70 dark:text-white/70">
         {t(locale, 'login.subtitle')}
       </p>
       <form onSubmit={onSubmit} className="mt-8 space-y-4">
@@ -98,7 +98,7 @@ function LoginInner({ locale }: { locale: Locale }) {
           {pending ? t(locale, 'login.submit.pending') : mode === 'signin' ? t(locale, 'login.submit.signIn') : t(locale, 'login.submit.signUp')}
         </button>
       </form>
-      <p className="mt-6 text-center text-sm text-black/50 dark:text-white/50">
+      <p className="mt-6 text-center text-sm text-black/70 dark:text-white/70">
         {mode === 'signin' ? t(locale, 'login.toggle.toSignup') : t(locale, 'login.toggle.toSignin')}
         {' '}
         <button
