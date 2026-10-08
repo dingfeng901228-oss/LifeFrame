@@ -280,14 +280,14 @@ export function HomeGallery({ locale }: { locale: Locale }) {
   // viewer and passes visiblePhotos as the browse context.
 
   return (
-    <>
+    <main>
       {/* Frank #7243 Task 4 mobile layout — sibling to the desktop
           wrapper below. Frank #0906 round-13 (P2 #14 cont. 2):
           content-fit column. No min-h / overflow-hidden here any
           more: forcing the wrapper to fill calc(100vh - 65px) with
           overflow hidden made the Globe's fixed-px SVG blow the
           column open, which pushed the search box and Timeline
-          below the fold on phones and left a dead whitespace band
+          below the fold on phones and left a dead whitespace band,
           above them. Now the column sizes to its children (globe
           hero block + controls + timeline) and the page scrolls
           normally below into the Features section. Hidden on
@@ -745,7 +745,7 @@ export function HomeGallery({ locale }: { locale: Locale }) {
           setLifeJourneyOpen(false);
         }}
       />
-    </>
+    </main>
   );
 }
 

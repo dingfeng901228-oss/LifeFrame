@@ -56,7 +56,7 @@ export function SiteFooter({ locale }: { locale: Locale }) {
             <p className="mt-1">
               <Link
                 href={SITE_URL}
-                className="text-xs text-black/50 transition hover:text-black/80 dark:text-white/50 dark:hover:text-white/80"
+                className="text-xs text-black/70 transition hover:text-black dark:text-white/70 dark:hover:text-white"
               >
                 {SITE_URL}
               </Link>
