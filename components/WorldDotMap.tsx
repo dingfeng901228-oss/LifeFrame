@@ -1,22 +1,28 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { COUNTRY_CENTROIDS } from '@/lib/country-centroids';
+import { getCountryCentroid } from '@/lib/country-centroids';
+import countriesGeo from '@/lib/countries';
 import { expandCountryCard } from '@/components/CollapseCountryButton';
 
 /**
- * Frank #0906 round-14 (Batch C): mini equirectangular world map
+ * Frank #0906 round-14 cont.: mini equirectangular world map
  * for the Stats page. Lightweight — pure inline SVG (no external
  * map lib), dark-mode aware.
  *
- * Layout: 360×180 viewBox (1:0.5 aspect, matches Robinson-ish 2:1
- * equirectangular projection roughly). The whole map is one
- * stretched CSS pixel so it scales nicely inside the stats
- * container. Lat/lng → x/y: x = (lng+180)/360 * 360 = lng+180,
- * y = (90-lat)/180 * 180 = 90-lat.
+ * Layout: 360×180 viewBox (1:0.5 aspect, matches the
+ * equirectangular 2:1 projection). Lat/lng → x/y: x = lng+180,
+ * y = 90-lat.
  *
- * Dots are sized by photo count: <5 → 3 px, <20 → 5 px, else 7 px.
- * Clicking a dot expands a country card (defer to the parent).
+ * Frank #0906 round-14 cont.: the country outlines are now
+ * real polygons from world-atlas 110m TopoJSON (177 countries,
+ * ~95KB JSON → ~5KB projected SVG path data), not hand-traced
+ * blobs. Visitor can actually point at Japan vs. Europe vs.
+ * the Americas instead of guessing.
+ *
+ * Dots are sized by photo count: <5 → 3 px, <20 → 5 px, else
+ * 7 px. Clicking a dot dispatches an event the cards listen
+ * for (expandCountryCard + scrollIntoView).
  */
 type Country = { country: string; total: number; cities: Array<{ city: string; count: number }> };
 
@@ -45,13 +51,52 @@ function dotSize(count: number): number {
   return 7;
 }
 
+/** Project a single GeoJSON Polygon or MultiPolygon ring to an
+ *  SVG `d` string in the 360×180 viewBox. Equirectangular:
+ *  each [lng, lat] → (lng+180, 90-lat). For MultiPolygon we
+ *  emit one `M…L…Z` sub-path per part so countries with
+ *  overseas territories (e.g. France, USA) don't get a giant
+ *  diagonal line drawn between Hawaii and the mainland. */
+function projectRing(ring: Array<[number, number, number?]>): string {
+  return ring
+    .map(([lng, lat]) => {
+      const x = lng + 180;
+      const y = 90 - lat;
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    })
+    .join(' L ');
+}
+
+function projectGeometry(geom: GeoJSON.Geometry): string {
+  if (geom.type === 'Polygon') {
+    return geom.coordinates
+      .map((ring) => 'M ' + projectRing(ring as [number, number, number?][]) + ' Z')
+      .join(' ');
+  }
+  if (geom.type === 'MultiPolygon') {
+    return geom.coordinates
+      .flatMap(
+        (poly) =>
+          poly.map(
+            (ring) =>
+              'M ' + projectRing(ring as [number, number, number?][]) + ' Z',
+          ),
+      )
+      .join(' ');
+  }
+  return '';
+}
+
 export function WorldDotMap({ countries }: Props) {
   const [hovered, setHovered] = useState<string | null>(null);
   const placed = useMemo(
     () =>
       countries
         .map((c) => {
-          const centroid = COUNTRY_CENTROIDS[c.country];
+          // getCountryCentroid returns null for countries not
+          // in the dict; the dot map shouldn't place a dot at
+          // (0,0) for an unknown country. Skip such entries.
+          const centroid = getCountryCentroid(c.country);
           if (!centroid) return null;
           const { x, y } = lngLatToXY(centroid.lat, centroid.lng);
           return { ...c, x, y };
@@ -60,8 +105,25 @@ export function WorldDotMap({ countries }: Props) {
     [countries],
   );
 
+  // Pre-compute country polygon paths. countriesGeo is the
+  // module-level FeatureCollection from lib/countries (parsed
+  // once at import time) so the projection loop only needs to
+  // run once across the whole app lifetime.
+  const countryPaths = useMemo(() => {
+    const paths: { id: string; d: string }[] = [];
+    for (const f of countriesGeo.features) {
+      const d = projectGeometry(f.geometry);
+      if (d) {
+        // f.id is the numeric ISO code (e.g. 156 = China) in
+        // the world-atlas 110m set. Use it as a stable key.
+        paths.push({ id: String(f.id ?? f.properties?.name ?? ''), d });
+      }
+    }
+    return paths;
+  }, []);
+
   return (
-    <div className="relative rounded-lg border border-black/10 bg-gradient-to-b from-sky-50/40 to-white dark:border-white/10 dark:from-sky-900/20 dark:to-black/40">
+    <div className="relative rounded-lg border border-white/10 bg-gradient-to-b from-sky-900/20 to-black/40">
       <svg
         viewBox={`0 0 ${W} ${H}`}
         className="h-auto w-full"
@@ -87,22 +149,22 @@ export function WorldDotMap({ countries }: Props) {
         </defs>
         <rect width={W} height={H} fill="url(#grat)" />
 
-        {/* Hand-traced continental blobs. Not cartographic — just
-             enough shape to anchor dots to a continent. Three
-             stylised landmass groups so the dot grid feels
-             purposeful instead of floating in space. */}
+        {/* Country polygons from world-atlas 110m (round-14
+            cont.). Single flat-fill so the visitor can recognize
+            continents at a glance. ~95KB JSON → ~5KB of SVG
+            path data after projection + 2-decimal rounding. */}
         <g
-          className="fill-black/[0.06] stroke-black/15 dark:fill-white/[0.08] dark:stroke-white/20"
+          className="fill-white/[0.07] stroke-white/15"
           strokeWidth="0.4"
+          strokeLinejoin="round"
         >
-          {/* Asia / Pacific */}
-          <path d="M210 36 Q230 28 260 32 Q300 32 325 50 Q340 60 340 90 Q330 110 310 115 Q280 122 250 110 Q220 102 210 80 Q198 60 210 36Z" />
-          {/* Europe / Africa */}
-          <path d="M150 38 Q170 28 200 32 Q220 38 220 60 Q230 80 218 110 Q200 140 185 145 Q170 138 165 115 Q150 95 150 75 Q145 55 150 38Z" />
-          {/* Americas */}
-          <path d="M40 38 Q60 28 80 32 Q100 40 105 60 Q110 90 95 110 Q85 130 75 145 Q60 140 50 115 Q35 90 40 60 Q35 48 40 38Z" />
-          {/* Australia */}
-          <path d="M280 125 Q300 118 320 125 Q330 135 320 148 Q300 152 285 145 Q275 138 280 125Z" />
+          {countryPaths.map((p) => (
+            <path
+              key={p.id}
+              d={p.d}
+              className="transition-opacity duration-150"
+            />
+          ))}
         </g>
 
         {/* Country dots */}
@@ -140,7 +202,7 @@ export function WorldDotMap({ countries }: Props) {
                   y={c.y - r - 3}
                   textAnchor="middle"
                   fontSize="5"
-                  className="fill-black dark:fill-white pointer-events-none"
+                  className="fill-white pointer-events-none"
                 >
                   {c.country} · {c.total}
                 </text>
@@ -156,7 +218,7 @@ export function WorldDotMap({ countries }: Props) {
         <span>● 5–19 张</span>
         <span>● 20+ 张</span>
         {placed.length < countries.length && (
-          <span className="text-black/40 dark:text-white/40">
+          <span className="text-white/40">
             ({countries.length - placed.length} 国家未在此地图展示)
           </span>
         )}
