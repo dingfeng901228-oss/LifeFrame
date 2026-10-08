@@ -204,7 +204,7 @@ export default async function StatsPage() {
         <p className="text-xs tracking-[0.4em] text-black/70 dark:text-white/70 uppercase">
           Stats · §27
         </p>
-        <h1 className="mt-2 text-3xl font-light text-white">
+        <h1 className="mt-2 text-3xl font-light text-black dark:text-white">
           🌍 足迹统计
         </h1>
         <p className="mt-2 text-sm text-[var(--text-muted)]">
@@ -272,7 +272,7 @@ export default async function StatsPage() {
         </>
       )}
 
-      <p className="mt-12 text-center text-sm text-[var(--text-secondary)]">
+      <p className="mt-12 text-center text-sm text-black/70 dark:text-white/55">
         数据基于公开 + 不公开链接分享的照片（人物照片需登录可见）
       </p>
     </main>
@@ -323,7 +323,7 @@ function CityCard({
 function StatBox({ label, value }: { label: string; value: number }) {
   return (
     <div className="text-center">
-      <div className="text-3xl font-light tabular-nums text-white">
+      <div className="text-3xl font-light tabular-nums text-black dark:text-white">
         {value}
       </div>
       <div className="mt-1 text-xs uppercase tracking-widest text-[var(--text-muted)]">
