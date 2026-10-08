@@ -47,10 +47,10 @@ export function SiteFooter({ locale }: { locale: Locale }) {
             <p className="mt-1 text-xs text-black/55 dark:text-white/55">
               {t(locale, 'footer.brand.title')}
             </p>
-            <p className="mt-1 text-xs text-black/60 dark:text-white/60">
+            <p className="mt-1 text-xs text-black/70 dark:text-white/70">
               {t(locale, 'footer.brand.subtitle')}
             </p>
-            <p className="mt-3 text-xs text-black/60 dark:text-white/60">
+            <p className="mt-3 text-xs text-black/70 dark:text-white/70">
               © 2026 {SITE_AUTHOR} · {SITE_NAME}
             </p>
             <p className="mt-1">
@@ -65,7 +65,7 @@ export function SiteFooter({ locale }: { locale: Locale }) {
 
           {/* Links column */}
           <div>
-            <p className="text-xs uppercase tracking-wider text-black/60 dark:text-white/60">
+            <p className="text-xs uppercase tracking-wider text-black/70 dark:text-white/70">
               {/* Section label is the same in both locales — it's a
                   UI affordance, not content. */}
               <span aria-hidden="true">Links</span>
@@ -110,7 +110,7 @@ export function SiteFooter({ locale }: { locale: Locale }) {
           <p>
             {t(locale, 'footer.tagline')}
             <span
-              className="ml-2 cursor-help text-black/60 dark:text-white/60"
+              className="ml-2 cursor-help text-black/70 dark:text-white/70"
               title={t(locale, 'footer.privacy.tooltip')}
               aria-label={t(locale, 'footer.privacy.tooltip')}
             >

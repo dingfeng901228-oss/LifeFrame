@@ -201,7 +201,7 @@ export default async function StatsPage() {
   return (
     <main className="mx-auto max-w-4xl px-6 py-12">
       <header className="mb-10">
-        <p className="text-xs tracking-[0.4em] text-black/60 dark:text-white/60 uppercase">
+        <p className="text-xs tracking-[0.4em] text-black/70 dark:text-white/70 uppercase">
           Stats · §27
         </p>
         <h1 className="mt-2 text-3xl font-light text-white">
@@ -235,7 +235,7 @@ export default async function StatsPage() {
       </div>
 
       {cities.length === 0 ? (
-        <p className="text-black/60 dark:text-white/60">
+        <p className="text-black/70 dark:text-white/70">
           还没有带位置的照片
         </p>
       ) : (

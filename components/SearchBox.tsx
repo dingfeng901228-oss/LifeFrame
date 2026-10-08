@@ -131,7 +131,7 @@ export function SearchBox({
           className="absolute left-0 right-0 top-full z-20 mt-2 max-h-80 overflow-auto rounded-xl border border-black/10 bg-white/95 p-2 shadow-xl backdrop-blur-md dark:border-white/15 dark:bg-black/90"
         >
           {matches.length === 0 ? (
-            <div className="px-3 py-6 text-center text-sm text-black/60 dark:text-white/60">
+            <div className="px-3 py-6 text-center text-sm text-black/70 dark:text-white/70">
               <p className="mb-2">
                 🔍{' '}
                 {t(locale, 'search.noResults', { query: trimmed })}
@@ -146,7 +146,7 @@ export function SearchBox({
             </div>
           ) : (
             <>
-              <div className="px-2 pb-1 text-[11px] uppercase tracking-wider text-black/60 dark:text-white/60">
+              <div className="px-2 pb-1 text-[11px] uppercase tracking-wider text-black/70 dark:text-white/70">
                 {t(locale, 'search.resultsLabel')} ·{' '}
                 {matches.length <= PREVIEW_LIMIT
                   ? matches.length

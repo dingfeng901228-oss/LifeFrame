@@ -65,7 +65,7 @@ function LoginInner({ locale }: { locale: Locale }) {
       </p>
       <form onSubmit={onSubmit} className="mt-8 space-y-4">
         <label className="block">
-          <span className="block text-xs text-black/60 dark:text-white/60">{t(locale, 'login.field.email')}</span>
+          <span className="block text-xs text-black/70 dark:text-white/70">{t(locale, 'login.field.email')}</span>
           <input
             type="email"
             value={email}
@@ -77,7 +77,7 @@ function LoginInner({ locale }: { locale: Locale }) {
           />
         </label>
         <label className="block">
-          <span className="block text-xs text-black/60 dark:text-white/60">{t(locale, 'login.field.password')}</span>
+          <span className="block text-xs text-black/70 dark:text-white/70">{t(locale, 'login.field.password')}</span>
           <input
             type="password"
             value={password}

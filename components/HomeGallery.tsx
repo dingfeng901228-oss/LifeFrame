@@ -440,7 +440,7 @@ export function HomeGallery({ locale }: { locale: Locale }) {
                   <h1 className="mt-2 text-2xl font-light text-black dark:text-white sm:text-3xl lg:text-4xl">
             {t(locale, 'hero.title')}
           </h1>
-          <p className="mx-auto mt-3 max-w-md text-sm text-black/60 dark:text-white/60">
+          <p className="mx-auto mt-3 max-w-md text-sm text-black/70 dark:text-white/70">
             {loading
               ? t(locale, 'hero.subtitle.loading')
               : photos.length === 0

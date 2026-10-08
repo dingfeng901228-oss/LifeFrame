@@ -90,7 +90,7 @@ function FeatureCard({
               {title}
             </h3>
           </div>
-          <span className="text-[10px] uppercase tracking-wider text-black/60 dark:text-white/60">
+          <span className="text-[10px] uppercase tracking-wider text-black/70 dark:text-white/70">
             {demoLabel}
           </span>
         </div>

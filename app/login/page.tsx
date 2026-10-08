@@ -37,7 +37,7 @@ function Brand({ locale }: { locale: Locale }) {
       <p className="mt-4 text-2xl font-light text-black dark:text-white">
         {t(locale, 'login.brandTitle')}
       </p>
-      <p className="mt-2 text-sm text-black/60 dark:text-white/60">
+      <p className="mt-2 text-sm text-black/70 dark:text-white/70">
         {t(locale, 'login.brandSubtitle')}
       </p>
       <ul className="mt-8 space-y-3 text-sm text-black/70 dark:text-white/70">

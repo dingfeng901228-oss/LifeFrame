@@ -78,7 +78,7 @@ export default async function MonthPage({
         <p className="mt-4">
           <Link
             href="/timeline"
-            className="text-sm text-black/60 dark:text-white/60 transition hover:text-black dark:hover:text-white"
+            className="text-sm text-black/70 dark:text-white/70 transition hover:text-black dark:hover:text-white"
           >
             ← 返回时间线
           </Link>

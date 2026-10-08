@@ -91,7 +91,7 @@ export function PWARegistrar({ locale = 'zh' as Locale }: { locale?: Locale } = 
     >
       <span className="flex-1 text-black dark:text-white">
         <strong className="mr-1">📱 {locale === 'ja' ? 'LifeFrame をインストール' : '安装 LifeFrame'}</strong>
-        <span className="text-black/60 dark:text-white/60">
+        <span className="text-black/70 dark:text-white/70">
           {locale === 'ja'
             ? 'ホーム画面に追加。オフラインでも使えます。'
             : '添加到主屏幕，离线也能用。'}

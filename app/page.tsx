@@ -43,12 +43,20 @@ export default async function Home() {
           monitors. HomeGallery's internal flex layout handles
           desktop stacking (hero text + globe + controls + timeline
           in a column). */}
-      <section
-        aria-label="LifeFrame 简介"
-        className="relative w-full lg:overflow-hidden"
-      >
+      {/* Frank #0906 round-13: capped at 80vh so the Features
+          section below is visible without scrolling on most
+          monitors. HomeGallery's internal flex layout handles
+          desktop stacking (hero text + globe + controls + timeline
+          in a column).
+          Frank #7243 review: was <section aria-label="LifeFrame 简介">,
+          but HomeGallery now owns its own <main> landmark.
+          Nesting <main> inside <section> makes axe flag
+          "landmark-main-is-top-level" (main inside another
+          landmark). Use a plain <div> here so <main> stays
+          at the top level of the document outline. */}
+      <div className="relative w-full lg:overflow-hidden">
         <HomeGallery locale={locale} />
-      </section>
+      </div>
 
       {/* Features — three core capability cards with inline
           SVG demo mockups. Frank #0906 round-13 (P2 #9): the
@@ -64,7 +72,7 @@ export default async function Home() {
         aria-labelledby="features-heading"
         className="mx-auto max-w-5xl px-6 py-16 sm:py-24"
       >
-        <p className="mb-2 text-xs tracking-[0.4em] text-black/60 dark:text-white/60 uppercase">
+        <p className="mb-2 text-xs tracking-[0.4em] text-black/70 dark:text-white/70 uppercase">
           {t(locale, 'features.eyebrow')}
         </p>
         <h2

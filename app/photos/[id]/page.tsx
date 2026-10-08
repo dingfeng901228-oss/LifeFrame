@@ -82,7 +82,7 @@ export default async function PhotoDetailPage({
             <h1 className="mt-4 text-2xl font-light text-black dark:text-white">
               需要登录查看
             </h1>
-            <p className="mt-2 text-sm text-black/60 dark:text-white/60">
+            <p className="mt-2 text-sm text-black/70 dark:text-white/70">
               这张照片包含人物，需要登录后才能查看。
             </p>
             <Link
@@ -150,7 +150,7 @@ export default async function PhotoDetailPage({
           />
         </div>
         {photo.categories && photo.categories.length > 0 && (
-          <p className="mt-4 text-sm text-black/60 dark:text-white/60">
+          <p className="mt-4 text-sm text-black/70 dark:text-white/70">
             🏷️ {photo.categories.join(' · ')}
           </p>
         )}
