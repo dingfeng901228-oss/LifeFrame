@@ -15,7 +15,7 @@ export default async function LoginPage() {
   // component (LoginForm) imported at the bottom.
   const locale = await getLocale();
   return (
-    <div className="mx-auto grid min-h-[calc(100vh-65px)] max-w-5xl items-stretch px-6 py-12 lg:grid-cols-2 lg:gap-10">
+    <main className="mx-auto grid min-h-[calc(100vh-65px)] max-w-5xl items-stretch px-6 py-12 lg:grid-cols-2 lg:gap-10">
       {/* Brand panel — logo + tagline + 3 bullet points. Was empty
           space before, which made the form look like it had been
           pushed to a corner. On mobile (< lg) the panel collapses
@@ -26,7 +26,7 @@ export default async function LoginPage() {
       <div className="mx-auto flex w-full max-w-sm items-center">
         <LoginForm locale={locale} />
       </div>
-    </div>
+    </main>
   );
 }
 

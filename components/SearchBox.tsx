@@ -116,7 +116,7 @@ export function SearchBox({
         {/* "/" hint when input is empty — fades on focus so it
             doesn't distract the user once they're typing. */}
         {!hasQuery && (
-          <kbd className="pointer-events-none absolute inset-y-0 right-3 my-auto inline-flex h-6 items-center rounded border border-black/15 px-1.5 text-[10px] font-medium text-black/40 dark:border-white/15 dark:text-white/40">
+          <kbd className="pointer-events-none absolute inset-y-0 right-3 my-auto inline-flex h-6 items-center rounded border border-black/15 px-1.5 text-[10px] font-medium text-black/55 dark:border-white/15 dark:text-white/60">
             /
           </kbd>
         )}
@@ -146,7 +146,7 @@ export function SearchBox({
             </div>
           ) : (
             <>
-              <div className="px-2 pb-1 text-[11px] uppercase tracking-wider text-black/40 dark:text-white/40">
+              <div className="px-2 pb-1 text-[11px] uppercase tracking-wider text-black/60 dark:text-white/60">
                 {t(locale, 'search.resultsLabel')} ·{' '}
                 {matches.length <= PREVIEW_LIMIT
                   ? matches.length
@@ -199,7 +199,7 @@ export function SearchBox({
                 })}
               </ul>
               {matches.length > PREVIEW_LIMIT && (
-                <div className="border-t border-black/5 px-2 pt-2 text-[11px] text-black/40 dark:border-white/10 dark:text-white/40">
+                <div className="border-t border-black/5 px-2 pt-2 text-[11px] text-black/60 dark:border-white/10 dark:text-white/60">
                   {t(locale, 'search.moreHint', {
                     count: matches.length - PREVIEW_LIMIT,
                   })}

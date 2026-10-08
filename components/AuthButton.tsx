@@ -205,7 +205,7 @@ export function AuthButton() {
     return (
       <Link
         href="/login"
-        className="rounded-full border border-white/30 px-4 py-1 text-xs text-white transition hover:border-white/60 hover:bg-white/5"
+        className="rounded-full border border-black/15 px-4 py-1 text-xs text-black transition hover:border-black/40 hover:bg-black/5 dark:border-white/30 dark:text-white dark:hover:border-white/60 dark:hover:bg-white/5"
       >
         {t(locale, 'auth.login')}
       </Link>
@@ -257,7 +257,7 @@ export function AuthButton() {
 
           {/* user_id with one-click copy (Frank #7117 #5) */}
           <div className="mb-2 rounded border border-white/10 bg-black/30 p-2">
-            <div className="mb-1 text-[10px] uppercase tracking-wider text-white/40">
+            <div className="mb-1 text-[10px] uppercase tracking-wider text-white/60">
               {t(locale, 'auth.userId')}
             </div>
             <div className="flex items-center gap-2">
@@ -280,7 +280,7 @@ export function AuthButton() {
               already includes this; we just surface it. */}
           {userCreatedAt && (
             <div className="mb-3 rounded border border-white/10 bg-black/30 p-2">
-              <div className="mb-1 text-[10px] uppercase tracking-wider text-white/40">
+              <div className="mb-1 text-[10px] uppercase tracking-wider text-white/60">
                 {t(locale, 'auth.registrationDate')}
               </div>
               <div className="font-mono text-[11px] text-white/70">
