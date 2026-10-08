@@ -3,20 +3,17 @@
 // for static same-origin assets. Skips /api and supabase routes so uploads and
 // auth never go through cache. Bumping VERSION invalidates both caches.
 
-// Frank #7129 Task #2 deep-dive: bump VERSION v3 → v4 to force
-// cache invalidation. Frank reported the like/comment bug
-// persisting after commit c8676ba (which had getUser→getSession
-// fixes for the like/likes/comments routes). Hypothesis: his
-// browser had cached the OLD JS bundles in runtime-v3 and the
-// SW's cache-first strategy kept serving them stale. Bumping
-// VERSION makes the activate handler clean out the v3 caches
-// and pre-cache the new bundles from this deploy. (Same self-
-// doc note: any time JS chunks change content, bump VERSION
-// so users don't see stale code after deploys.)
-const VERSION = 'v4';
+// Frank #0906 round-14 cont.: bump v4 → v5 to invalidate stale
+// caches on deploy. Also extended PRECACHE_URLS so offline
+// users land on the same pages they had open — /welcome (the
+// marketing surface) and /stats (the static aggregate, no
+// realtime data needed for the cached page) round out the
+// shell. /timeline and /photos/[id] still require network
+// because they have dynamic data that should be fresh.
+const VERSION = 'v5';
 const SHELL_CACHE = `shell-${VERSION}`;
 const RUNTIME_CACHE = `runtime-${VERSION}`;
-const PRECACHE_URLS = ['/', '/upload'];
+const PRECACHE_URLS = ['/', '/welcome', '/stats'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

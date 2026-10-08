@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { type Locale } from '@/lib/i18n';
 
 /**
  * Frank #0906 round-14 (Batch F): PWA install banner + service
@@ -21,7 +22,7 @@ type BeforeInstallPromptEvent = Event & {
 
 const STORAGE_KEY = 'lifeframe-pwa-install-dismissed';
 
-export function PWARegistrar() {
+export function PWARegistrar({ locale = 'zh' as Locale }: { locale?: Locale } = {}) {
   const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(
     null,
   );
@@ -85,13 +86,15 @@ export function PWARegistrar() {
   return (
     <div
       role="dialog"
-      aria-label="安装 LifeFrame"
+      aria-label={locale === 'ja' ? 'LifeFrame をインストール' : '安装 LifeFrame'}
       className="fixed bottom-4 left-4 right-4 z-40 flex items-center gap-3 rounded-lg border border-cyan-500/40 bg-white/95 px-4 py-3 text-sm shadow-lg backdrop-blur dark:border-cyan-400/30 dark:bg-black/85 sm:left-auto sm:right-4 sm:max-w-sm"
     >
       <span className="flex-1 text-black dark:text-white">
-        <strong className="mr-1">📱 安装 LifeFrame</strong>
+        <strong className="mr-1">📱 {locale === 'ja' ? 'LifeFrame をインストール' : '安装 LifeFrame'}</strong>
         <span className="text-black/60 dark:text-white/60">
-          添加到主屏幕，离线也能用。
+          {locale === 'ja'
+            ? 'ホーム画面に追加。オフラインでも使えます。'
+            : '添加到主屏幕，离线也能用。'}
         </span>
       </span>
       <button
@@ -99,16 +102,16 @@ export function PWARegistrar() {
         onClick={install}
         className="rounded-full bg-cyan-500 px-3 py-1 text-xs font-medium text-white transition hover:bg-cyan-400"
       >
-        安装
+        {locale === 'ja' ? 'インストール' : '安装'}
       </button>
       <button
         type="button"
         onClick={dismiss}
-        aria-label="关闭"
+        aria-label={locale === 'ja' ? '閉じる' : '关闭'}
         className="flex h-8 w-8 items-center justify-center rounded-full text-black/50 transition hover:bg-black/5 hover:text-black dark:text-white/50 dark:hover:bg-white/5 dark:hover:text-white"
       >
         ×
-      </button>
+    </button>
     </div>
   );
 }

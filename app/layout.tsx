@@ -80,8 +80,14 @@ export const metadata: Metadata = {
 
 // Next.js App Router: `viewport` export generates <meta name="theme-color">
 // and <meta name="viewport"> automatically — no manual <head> tags needed.
+// Frank #0906 round-14 cont.: two-color theme via the array form so the
+// browser chrome (Android address bar, iOS status bar tint) follows the
+// active theme instead of staying stuck on the dark default.
 export const viewport = {
-  themeColor: '#0a1c3a',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#fafafa' },
+    { media: '(prefers-color-scheme: dark)', color: '#0a0e1a' },
+  ],
   width: 'device-width',
   initialScale: 1,
 };
@@ -122,6 +128,26 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang={locale === 'ja' ? 'ja' : 'zh-Hans'}>
       <head>
         <link rel="apple-touch-icon" href="/icon-192.png" />
+        {/* Frank #0906 round-14 cont.: iOS PWA polish — these
+            <meta> tags aren't required for Chrome / Edge install
+            prompts but they make the iOS Add-to-Home-Screen
+            experience use the proper app-style chrome instead of
+            the Safari address bar. apple-mobile-web-app-capable
+            enables the standalone mode; the status-bar-style
+            default leaves the URL bar hidden but visible on
+            tap; the title overrides the document.title in the
+            iOS home-screen name. */}
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta
+          name="apple-mobile-web-app-status-bar-style"
+          content="black-translucent"
+        />
+        <meta name="apple-mobile-web-app-title" content="LifeFrame" />
+        {/* mask-icon is what Safari shows on pinned tabs (the
+            monochrome favicon variant). Without it Safari falls
+            back to a 16x16 pixelated favicon. The actual SVG sits
+            next to the existing png icons. */}
+        <link rel="mask-icon" href="/icon-monochrome.svg" color="#0a0e1a" />
         {/* eslint-disable-next-line @next/next/no-sync-scripts */}
         <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
       </head>
