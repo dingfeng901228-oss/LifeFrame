@@ -122,7 +122,8 @@ export function WorldDotMap({ countries }: Props) {
                 cx={c.x}
                 cy={c.y}
                 r={r}
-                className="fill-cyan-500 stroke-white dark:fill-cyan-400 dark:stroke-black"
+                data-stats-country={c.country}
+                className="fill-cyan-500 stroke-white dark:fill-cyan-400 dark:stroke-black transition-opacity duration-150"
                 strokeWidth="0.5"
                 onMouseEnter={() => setHovered(c.country)}
                 onMouseLeave={() => setHovered(null)}

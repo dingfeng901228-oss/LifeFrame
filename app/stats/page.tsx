@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 import { WorldDotMap } from '@/components/WorldDotMap';
 import { CollapseGroupButton } from '@/components/CollapseCountryButton';
+import { StatsSearch } from '@/components/StatsSearch';
 
 export const metadata: Metadata = {
   title: 'LifeFrame — 足迹统计',
@@ -172,6 +173,13 @@ export default async function StatsPage() {
         <p className="mt-2 text-sm text-[var(--text-muted)]">
           按城市分组的照片分布
         </p>
+        {/* Frank #0906 round-14 cont.: top-of-page search filters
+            both the city cards (by data-stats-loc="city|country")
+            and the world map dots (by data-stats-country). The
+            component reads the DOM directly to keep the cards
+            server-rendered; the input itself is the only client
+            island here. */}
+        <StatsSearch total={totalCities} />
       </header>
 
       {/* Frank #0906 round-14 (Batch C): top row keeps the three
@@ -240,6 +248,7 @@ function CityCard({
   return (
     <section
       id={`city-${city}-${country}`}
+      data-stats-loc={`${city} ${country}`}
       className="rounded-lg border border-white/10 bg-white/[0.02] dark:bg-white/[0.02]"
     >
       <CollapseGroupButton
