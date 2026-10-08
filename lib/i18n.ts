@@ -551,6 +551,39 @@ const dict: Dict = {
   'login.toggle.toSignin': { zh: '已有账号？', ja: '登録済み？' },
   'login.toggle.cta.signUp': { zh: '注册', ja: '登録' },
   'login.toggle.cta.signIn': { zh: '登录', ja: 'ログイン' },
+  // Frank #0906 round-14 cont.: Stats page export button + menu.
+  'stats.worldMap': {
+    zh: '🌍 地图视图',
+    ja: '🌍 地図ビュー',
+  },
+  'stats.exportLabel': {
+    zh: '导出数据',
+    ja: 'データをエクスポート',
+  },
+  'stats.exportButton': {
+    zh: '导出数据',
+    ja: 'エクスポート',
+  },
+  'stats.exportCsv': {
+    zh: 'CSV (Excel)',
+    ja: 'CSV (Excel)',
+  },
+  'stats.exportJson': {
+    zh: 'JSON (结构化)',
+    ja: 'JSON (構造化)',
+  },
+  'stats.exportDownloaded': {
+    zh: '已下载',
+    ja: 'ダウンロード済み',
+  },
+  'export.csvHint': {
+    zh: '表格一行一城市，适合 Excel',
+    ja: '1 都市 1 行、Excel 用',
+  },
+  'export.jsonHint': {
+    zh: '完整嵌套结构，适合程序处理',
+    ja: '完全なネスト構造、プログラム処理用',
+  },
 };
 
 export function t(

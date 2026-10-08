@@ -3,6 +3,8 @@ import { createSupabaseServerClient } from '@/lib/supabase-server';
 import { WorldDotMap } from '@/components/WorldDotMap';
 import { CollapseGroupButton } from '@/components/CollapseCountryButton';
 import { StatsSearch } from '@/components/StatsSearch';
+import { StatsExport } from '@/components/StatsExport';
+import { t } from '@/lib/i18n';
 
 export const metadata: Metadata = {
   title: 'LifeFrame — 足迹统计',
@@ -99,6 +101,11 @@ function parseLocation(loc: string | null): LocationParts | null {
 }
 
 export default async function StatsPage() {
+  // Frank #0906 round-14 cont.: read locale so the export menu
+  // + section labels can flip with the site-wide language switcher.
+  const { getLocale } = await import('@/lib/i18n-server');
+  const locale = await getLocale();
+
   let photos: PhotoRow[] = [];
   try {
     const supabase = await createSupabaseServerClient();
@@ -203,6 +210,21 @@ export default async function StatsPage() {
         </p>
       ) : (
         <>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-medium text-[var(--text-muted)]">
+              {t(locale, 'stats.worldMap')}
+            </h2>
+            <StatsExport
+              locale={locale}
+              rows={cities}
+              totalPhotos={totalPhotos}
+              label={t(locale, 'stats.exportLabel')}
+              buttonLabel={t(locale, 'stats.exportButton')}
+              csvLabel={t(locale, 'stats.exportCsv')}
+              jsonLabel={t(locale, 'stats.exportJson')}
+              downloadedLabel={t(locale, 'stats.exportDownloaded')}
+            />
+          </div>
           <WorldDotMap countries={countriesForMap} />
           <div className="mt-8 space-y-3">
             {cities.map((c) => (
