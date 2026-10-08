@@ -272,7 +272,7 @@ export default async function StatsPage() {
         </>
       )}
 
-      <p className="mt-12 text-center text-sm text-black/70 dark:text-white/70">
+      <p className="mt-12 text-center text-sm text-black/80 dark:text-white/80">
         数据基于公开 + 不公开链接分享的照片（人物照片需登录可见）
       </p>
     </main>
