@@ -22,10 +22,11 @@ type Country = { country: string; total: number; cities: Array<{ city: string; c
 
 type Props = {
   countries: Country[];
-  // When a dot is clicked we scroll to / highlight the matching
-  // country card. The parent owns the anchor lookup (we just call
-  // .scrollIntoView on the target ref).
-  onSelect?: (id: string) => void;
+  // onSelect was removed (Frank #0906 round-14): server
+  // components can't pass functions into client components. The
+  // dot click already dispatches the expand-country custom event
+  // via expandCountryCard() below — the card itself handles
+  // the scrollIntoView via the CollapseCountryButton listener.
 };
 
 const W = 360;
@@ -44,7 +45,7 @@ function dotSize(count: number): number {
   return 7;
 }
 
-export function WorldDotMap({ countries, onSelect }: Props) {
+export function WorldDotMap({ countries }: Props) {
   const [hovered, setHovered] = useState<string | null>(null);
   const placed = useMemo(
     () =>
@@ -125,11 +126,8 @@ export function WorldDotMap({ countries, onSelect }: Props) {
                 strokeWidth="0.5"
                 onMouseEnter={() => setHovered(c.country)}
                 onMouseLeave={() => setHovered(null)}
-                onClick={() => {
-                  onSelect?.(c.country);
-                  expandCountryCard(c.country);
-                }}
-                style={{ cursor: onSelect ? 'pointer' : 'default' }}
+                onClick={() => expandCountryCard(c.country)}
+                style={{ cursor: 'pointer' }}
               >
                 <title>
                   {c.country}: {c.total} 张

@@ -107,16 +107,7 @@ export default async function StatsPage() {
         </p>
       ) : (
         <>
-          <WorldDotMap
-            countries={countries}
-            onSelect={(country) => {
-              if (typeof window !== 'undefined') {
-                document
-                  .getElementById(`country-${country}`)
-                  ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              }
-            }}
-          />
+          <WorldDotMap countries={countries} />
           <div className="mt-8 space-y-3">
             {countries.map((c) => (
               <CountryCard key={c.country} country={c} />
