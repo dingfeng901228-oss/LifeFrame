@@ -215,7 +215,7 @@ export function StatsExport({
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-white/15 bg-white/[0.04] px-4 text-sm text-white transition hover:border-white/40 hover:bg-white/[0.08]"
+        className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-black/15 bg-white/[0.04] px-4 text-sm text-black transition hover:border-black/40 hover:bg-white/[0.08] dark:border-white/15 dark:text-white dark:hover:border-white/40"
       >
         <span aria-hidden="true">📥</span>
         {buttonLabel}
