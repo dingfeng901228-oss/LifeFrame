@@ -182,7 +182,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 entry points without a third one in the global
                 header). */}
             <LanguageSwitcher current={locale} />
-            <ThemeToggle />
+            <ThemeToggle locale={locale} />
             <AuthButton />
           </nav>
         </header>

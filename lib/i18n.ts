@@ -584,6 +584,27 @@ const dict: Dict = {
     zh: '完整嵌套结构，适合程序处理',
     ja: '完全なネスト構造、プログラム処理用',
   },
+  // Frank #0906 round-14 cont.: theme toggle tooltip labels.
+  'theme.label': {
+    zh: '主题切换',
+    ja: 'テーマ切替',
+  },
+  'theme.tooltip.light': {
+    zh: '切换浅色模式',
+    ja: 'ライトモードに切替',
+  },
+  'theme.tooltip.system': {
+    zh: '跟随系统主题',
+    ja: 'システム設定に従う',
+  },
+  'theme.tooltip.dark': {
+    zh: '切换深色模式',
+    ja: 'ダークモードに切替',
+  },
+  'theme.active': {
+    zh: '当前已选中',
+    ja: '現在選択中',
+  },
 };
 
 export function t(

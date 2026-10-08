@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { t, type Locale } from '@/lib/i18n';
+import { Tooltip } from '@/components/Tooltip';
 
 type Theme = 'light' | 'dark' | 'system';
 
@@ -41,20 +43,25 @@ function applyToDocument(eff: 'light' | 'dark'): void {
 
 /**
  * Three-way theme toggle: Light / Dark / System.
- * - "System" follows `prefers-color-scheme` and live-updates when the
- *   OS theme changes mid-session.
- * - "Light" / "Dark" write the choice to localStorage so it persists
- *   across reloads.
+ * - "System" follows `prefers-color-scheme` and live-updates when
+ *   the OS theme changes mid-session.
+ * - "Light" / "Dark" write the choice to localStorage so it
+ *   persists across reloads.
  * - The actual flip is done by adding/removing the `.dark` (or
  *   `.light`) class on <html>; globals.css and Tailwind's
  *   `@custom-variant dark (&:where(.dark, .dark *))` do the rest.
+ *
+ * Frank #0906 round-14 cont.: each button has a hover/focus
+ * tooltip (via <Tooltip>) + aria-label so the user knows what
+ * will happen before they click. Labels follow the site-wide
+ * locale prop passed from the layout.
  */
-export function ThemeToggle() {
+export function ThemeToggle({ locale = 'zh' as Locale }: { locale?: Locale } = {}) {
   const [theme, setTheme] = useState<Theme>('system');
   const [effective, setEffective] = useState<'light' | 'dark'>('dark');
 
-  // Read once on mount (the inline script in layout.tsx has already
-  // applied the right class to <html> so there's no FOUC).
+  // Read once on mount (the inline script in layout.tsx has
+  // already applied the right class to <html> so there's no FOUC).
   useEffect(() => {
     const t = readStoredTheme();
     setTheme(t);
@@ -89,40 +96,42 @@ export function ThemeToggle() {
     applyToDocument(eff);
   };
 
-  const options: Array<{ value: Theme; emoji: string; label: string }> = [
-    { value: 'light', emoji: '☀️', label: '浅色模式' },
-    { value: 'system', emoji: '💻', label: '跟随系统' },
-    { value: 'dark', emoji: '🌙', label: '深色模式' },
+  type Option = {
+    value: Theme;
+    emoji: string;
+    labelKey: 'theme.tooltip.light' | 'theme.tooltip.system' | 'theme.tooltip.dark';
+  };
+  const options: Option[] = [
+    { value: 'light', emoji: '☀️', labelKey: 'theme.tooltip.light' },
+    { value: 'system', emoji: '💻', labelKey: 'theme.tooltip.system' },
+    { value: 'dark', emoji: '🌙', labelKey: 'theme.tooltip.dark' },
   ];
 
   return (
     <div
       role="group"
-      aria-label="主题切换"
+      aria-label={t(locale, 'theme.label')}
       className="flex items-center gap-0.5 rounded-full border border-[var(--border-primary)] bg-[var(--bg-elevated)] p-0.5 text-xs"
     >
       {options.map((o) => {
         const isSelected = theme === o.value;
-        // Highlight the effective theme too — for "system" we always
-        // mark it selected when its resolved effective matches, which
-        // is when system == current color.
-        const showSelected = isSelected;
+        const label = t(locale, o.labelKey);
         return (
-          <button
-            key={o.value}
-            type="button"
-            onClick={() => pick(o.value)}
-            aria-label={o.label}
-            aria-pressed={showSelected}
-            title={o.label}
-            className={`rounded-full px-2 py-1 transition ${
-              showSelected
-                ? 'bg-[var(--text-primary)] text-[var(--bg-primary)]'
-                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-            }`}
-          >
-            <span aria-hidden="true">{o.emoji}</span>
-          </button>
+          <Tooltip key={o.value} label={label} side="top">
+            <button
+              type="button"
+              onClick={() => pick(o.value)}
+              aria-label={label}
+              aria-pressed={isSelected}
+              className={`rounded-full px-2 py-1 transition ${
+                isSelected
+                  ? 'bg-[var(--text-primary)] text-[var(--bg-primary)]'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              <span aria-hidden="true">{o.emoji}</span>
+            </button>
+          </Tooltip>
         );
       })}
     </div>
