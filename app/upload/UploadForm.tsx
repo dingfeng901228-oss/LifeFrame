@@ -471,6 +471,17 @@ export function UploadForm() {
 
   return (
     <div className="space-y-6">
+      {/* Frank #7243 Task 3 (privacy notice): 顶部加一条小字提示，
+          让用户上传时立刻知道默认是「照片私密 + 位置自动剥离」。
+          spec 是「照片默认私密；位置数据可选择保留或移除」。
+          使用 cyan 边框 + 9% bg 区分，不是 alert；放在 form 最顶
+          端让用户先看到承诺，再上传。隐藏 on success / uploading
+          状态（任务流是单向的：看到提示 → 上传 → 不需要再看到）。 */}
+      {batchStatus !== 'done' && batchStatus !== 'uploading' && (
+        <div className="rounded-lg border border-cyan-400/30 bg-cyan-500/[0.04] px-3 py-2 text-xs text-cyan-100/90">
+          🔒 照片默认私密；位置数据可选择保留或移除。
+        </div>
+      )}
       {/* File input — `multiple` enables batch selection */}
       <label className="block">
         <span className="sr-only">选择图片（最多 {MAX_BATCH} 张）</span>

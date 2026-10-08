@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { Globe } from '@/components/Globe';
 import { Timeline } from '@/components/Timeline';
 import { TimeTravel } from '@/components/TimeTravel';
@@ -309,7 +310,7 @@ export function HomeGallery({ locale }: { locale: Locale }) {
             bug where the earth ate the title). overflow-hidden on
             this block clips the leaked country paths so they never
             cover the Timeline buttons below. */}
-        <div className="relative h-[46vh] min-h-[300px] w-full flex-shrink-0 overflow-hidden">
+        <div className="relative h-[44vh] min-h-[300px] w-full flex-shrink-0 overflow-hidden">
           <Globe
             markers={markers}
             onMarkerSelect={handleMarkerSelect}
@@ -356,6 +357,23 @@ export function HomeGallery({ locale }: { locale: Locale }) {
                 total={photos.length}
                 onPickMatch={(p) => setSelected(p)}
               />
+            )}
+            {/* Frank #7243 Task 5: 移动端显示一个醒目的「开始记录」CTA，
+                让新用户不需要滚动就能看到主行动。优先级比「时间旅行」/
+                「人生足迹」高（用 cyan 实心按钮而非描边），只在 (1) 未
+                登录 + (2) 当前没照片 时显示——已有照片/已登录的用户
+                看到的还是时间旅行/人生足迹。链接到 /upload，未登录访问
+                /upload 时会被 /login 重定向回来（保留 next 参数），是
+                标准的「主按钮」+「次按钮」组合。 */}
+            {!sessionUserId && photos.length === 0 && (
+              <div className="flex justify-center pb-1">
+                <Link
+                  href="/upload"
+                  className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-cyan-500 px-5 text-sm font-medium text-white shadow-sm transition hover:bg-cyan-400"
+                >
+                  {t(locale, 'hero.cta.start')}
+                </Link>
+              </div>
             )}
             {sessionUserId && (
               <div className="flex flex-wrap items-center justify-center gap-2 pb-1">
@@ -433,6 +451,26 @@ export function HomeGallery({ locale }: { locale: Locale }) {
                     ? `${visibleCount} 张照片在 ${formatMonth(selectedDate)} ± ${TIMELINE_WINDOW_DAYS / 2} 天窗口内`
                     : t(locale, 'hero.subtitle.countNoFilter', { count: photos.length })}
           </p>
+          {/* Frank #7243 Task 5: 桌面端 hero 同样在「未登录 + 没照片」
+              状态显示一个 cyan 主按钮（+ 描边次按钮），让首屏转化
+              路径清晰。已有照片/已登录用户看到的是时间旅行/人生足迹
+              控件（下方独立行），所以这里只对全新访客出现。 */}
+          {!sessionUserId && photos.length === 0 && (
+            <div className="mt-5 flex items-center justify-center gap-3">
+              <Link
+                href="/upload"
+                className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-cyan-500 px-5 text-sm font-medium text-white shadow-sm transition hover:bg-cyan-400"
+              >
+                {t(locale, 'hero.cta.primary')}
+              </Link>
+              <Link
+                href="/welcome"
+                className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-black/15 px-5 text-sm text-black/80 transition hover:bg-black/5 dark:border-white/20 dark:text-white/80 dark:hover:bg-white/5"
+              >
+                {t(locale, 'hero.cta.secondary')}
+              </Link>
+            </div>
+          )}
         </div>
 
         {/* Globe — 55 vh stage. Self-contained so it doesn't

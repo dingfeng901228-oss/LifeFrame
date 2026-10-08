@@ -64,6 +64,14 @@ const dict: Dict = {
     zh: '先看看它如何工作',
     ja: '仕組みを見る',
   },
+  // Frank #7243 Task 5: mobile primary CTA, shorter than
+  // hero.cta.primary (which is the desktop hero / welcome
+  // page full sentence). The mobile one fits on one line
+  // on 320px viewports.
+  'hero.cta.start': {
+    zh: '开始记录',
+    ja: '記録を始める',
+  },
   'hero.searchPlaceholder': {
     zh: '🔍 搜索照片…',
     ja: '🔍 写真を検索…',
@@ -593,8 +601,8 @@ const dict: Dict = {
     ja: '完全なネスト構造、プログラム処理用',
   },
   'export.csvDetailHint': {
-    zh: '239 照片按拍摄时间排序',
-    ja: '239 枚を撮影時刻順で出力',
+    zh: '{n} 照片按拍摄时间排序',
+    ja: '{n} 枚を撮影時刻順で出力',
   },
   'export.jsonDetailHint': {
     zh: '照片含 lat/lng/拍摄时间',
