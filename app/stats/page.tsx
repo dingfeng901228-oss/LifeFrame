@@ -21,7 +21,52 @@ type LocationParts = { city: string; country: string };
  * { city, country }. Last comma-separated segment is country, first is
  * city. Middle segments are folded into city ("Kanagawa, Japan"
  → // "Kanagawa"). Empty / null returns null (skipped in stats).
+ *
+ * Frank #0906 round-14: skip Chinese / Japanese admin levels
+ * (province/prefecture/district/ward/city-with-suffix) so the
+ * last segment is actually the country. Without the filter Frank's
+ * location strings (e.g. "威海市, 山东省, 中国" parsed as
+ * country=山东省 because of "山东省" being the second-to-last
+ * segment when the actual country is "中国") fragment the stats
+ * page into 27 mostly-unrecognised "countries".
  */
+const ADMIN_LEVELS_CN = new Set([
+  '北京市', '上海市', '天津市', '重庆市',
+  '河北省', '山西省', '辽宁省', '吉林省', '黑龙江省',
+  '江苏省', '浙江省', '安徽省', '福建省', '江西省', '山东省',
+  '河南省', '湖北省', '湖南省', '广东省', '海南省',
+  '四川省', '贵州省', '云南省', '陕西省', '甘肃省', '青海省',
+  '台湾省',
+  '内蒙古自治区', '广西壮族自治区', '西藏自治区', '宁夏回族自治区', '新疆维吾尔自治区',
+  '香港特别行政区', '澳门特别行政区',
+]);
+// Japanese prefectures end in 都/道/府/県.
+const JP_PREF = new Set([
+  '北海道', '青森県', '岩手県', '宮城県', '秋田県', '山形県', '福島県',
+  '茨城県', '栃木県', '群馬県', '埼玉県', '千葉県', '東京都', '神奈川県',
+  '新潟県', '富山県', '石川県', '福井県', '山梨県', '長野県', '岐阜県',
+  '静岡県', '愛知県', '三重県', '滋賀県', '京都府', '大阪府', '兵庫県',
+  '奈良県', '和歌山県', '鳥取県', '島根県', '岡山県', '広島県', '山口県',
+  '徳島県', '香川県', '愛媛県', '高知県', '福岡県', '佐賀県', '長崎県',
+  '熊本県', '大分県', '宮崎県', '鹿児島県', '沖縄県',
+]);
+// Korean provinces + 도.
+const KR_PREF = new Set([
+  '서울특별시', '부산광역시', '대구광역시', '인천광역시', '광주광역시',
+  '대전광역시', '울산광역시', '세종특별자치시',
+  '경기도', '강원특별자치도', '충청북도', '충청남도',
+  '전북특별자치도', '전라남도', '경상북도', '경상남도', '제주특별자치도',
+]);
+
+function isAdminLevelCN(s: string): boolean {
+  if (ADMIN_LEVELS_CN.has(s)) return true;
+  if (JP_PREF.has(s)) return true;
+  if (KR_PREF.has(s)) return true;
+  // Generic CN: district 县/区/市 + ward 街道/镇/乡/村
+  if (/(?:区|县|镇|乡|村|街道)$/.test(s)) return true;
+  return false;
+}
+
 function parseLocation(loc: string | null): LocationParts | null {
   if (!loc) return null;
   const parts = loc
@@ -29,7 +74,13 @@ function parseLocation(loc: string | null): LocationParts | null {
     .map((s) => s.trim())
     .filter(Boolean);
   if (parts.length === 0) return null;
-  const country = parts[parts.length - 1];
+  let country = parts[parts.length - 1];
+  // Drop trailing admin levels until we hit something that looks
+  // like a real country name. If everything drops out, null.
+  while (isAdminLevelCN(country) && parts.length > 1) {
+    parts.pop();
+    country = parts[parts.length - 1];
+  }
   return { city: parts[0], country };
 }
 
