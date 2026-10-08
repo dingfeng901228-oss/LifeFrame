@@ -3,27 +3,34 @@
 import { useEffect, useRef, useState } from 'react';
 
 /**
- * Frank #0906 round-14 (Batch C): collapsible country card
- * header + body. Default collapsed (so the Stats page fits one
- * screen on desktop). The first country is auto-opened so the
+ * Frank #0906 round-14 (Batch C + 14 continuation): collapsible
+ * group header + body. Default collapsed (so the Stats page fits
+ * one screen on desktop). The first group is auto-opened so the
  * page doesn't read as "all closed" on first paint.
  *
- * Each card anchors itself by id (e.g. `country-中国`) so the
- * WorldDotMap onSelect handler can call
+ * Each card anchors itself by id so the WorldDotMap onSelect
+ * handler can call
  * `document.getElementById(...)?.scrollIntoView({ behavior: 'smooth' })`.
+ *
+ * Renamed from `CollapseCountryButton` to `CollapseGroupButton`
+ * (round-14): the card hierarchy is now city-first (each card is
+   one city, with country as a small subtitle), so the button
+   title prop alone is enough — no hard-coded country wording.
  */
 type Props = {
   title: string;
+  subtitle?: string;
   total: number;
-  cityCount: number;
+  itemCount?: string;
   defaultOpen?: boolean;
   children: React.ReactNode;
 };
 
-export function CollapseCountryButton({
+export function CollapseGroupButton({
   title,
+  subtitle,
   total,
-  cityCount,
+  itemCount,
   defaultOpen = false,
   children,
 }: Props) {
@@ -31,17 +38,15 @@ export function CollapseCountryButton({
   const ref = useRef<HTMLDivElement | null>(null);
 
   // External "expand me" signal: when the user clicks a country
-  // dot on the world map we want the card to expand + scroll into
-  // view. The Stats page (server component) can't directly call a
-  // client handler, so we listen on a custom DOM event the map
-  // dispatches on window. Decoupling keeps the map and the card
-  // siblings rather than parent/child.
+  // dot on the world map we want the matching card to expand
+  // + scroll into view. The Stats page (server component) can't
+  // directly call a client handler, so we listen on a custom
+  // DOM event the map dispatches on window.
   useEffect(() => {
     function onExpand(e: Event) {
       const target = e as CustomEvent<{ country: string }>;
       if (target.detail?.country !== title) return;
       setOpen(true);
-      // Wait a frame so the body has been rendered before scrolling.
       requestAnimationFrame(() => {
         ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       });
@@ -61,19 +66,26 @@ export function CollapseCountryButton({
       >
         <span className="flex items-baseline gap-3">
           <span
-            className={`text-black/40 transition-transform dark:text-white/40 ${open ? 'rotate-90' : ''}`}
+            className={`text-black/40 transition-transform dark:text-white/40 ${
+              open ? 'rotate-90' : ''
+            }`}
             aria-hidden="true"
           >
             ▶
           </span>
-          <span className="text-base font-medium text-black dark:text-white">
-            {title}
+          <span className="flex flex-col gap-0">
+            <span className="text-base font-medium text-black dark:text-white">
+              {title}
+            </span>
+            {subtitle && (
+              <span className="text-[11px] text-black/45 dark:text-white/45">
+                {subtitle}
+              </span>
+            )}
           </span>
         </span>
         <span className="flex items-baseline gap-3 text-sm tabular-nums text-black/40 dark:text-white/40">
-          {cityCount > 1 && (
-            <span>{cityCount} 座城市</span>
-          )}
+          {itemCount && <span>{itemCount}</span>}
           <span>{total} 张</span>
         </span>
       </button>

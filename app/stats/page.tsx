@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { createSupabaseServerClient } from '@/lib/supabase-server';
 import { WorldDotMap } from '@/components/WorldDotMap';
-import { CollapseCountryButton } from '@/components/CollapseCountryButton';
+import { CollapseGroupButton } from '@/components/CollapseCountryButton';
 
 export const metadata: Metadata = {
   title: 'LifeFrame — 足迹统计',
@@ -97,31 +97,55 @@ export default async function StatsPage() {
     // Env not configured (build-time prerender).
   }
 
-  // Group photos by country, then by city.
-  const countryMap = new Map<string, Map<string, number>>();
+  // Frank #0906 round-14 (round-14 cont.): flatten to one card
+  // per CITY (was: one card per country, with cities listed inside).
+  // The hierarchy was confusing for the user because the per-country
+  // aggregate was the bulk of what users want to see ("how many
+  // photos did I take in Tokyo?"), but the structure made that
+  // the second-level item under each country header.
+  //
+  // We still keep country as a small subtitle on each city card
+  // so the geographic context isn't lost (and so the map dots still
+  // match — the dot at 日本.cn.coords represents the sum of all
+  // Japanese cities, which the cards list separately).
+  const cityMap = new Map<string, { city: string; country: string; count: number }>();
   for (const p of photos) {
     const loc = parseLocation(p.location_name);
     if (!loc) continue;
-    const cityMap = countryMap.get(loc.country) ?? new Map<string, number>();
-    cityMap.set(loc.city, (cityMap.get(loc.city) ?? 0) + 1);
-    countryMap.set(loc.country, cityMap);
+    // If the city already exists in this country, increment; else
+    // add a new entry. Key by city+country to avoid collisions
+    // between cities of the same name in different countries
+    // (e.g. London UK vs. London ON).
+    const key = `${loc.country}::${loc.city}`;
+    const existing = cityMap.get(key);
+    if (existing) existing.count += 1;
+    else cityMap.set(key, { city: loc.city, country: loc.country, count: 1 });
   }
-
-  // Convert to sorted array: countries by total photo count desc;
-  // within each country, cities by count desc.
-  const countries = [...countryMap.entries()]
-    .map(([country, cities]) => ({
-      country,
-      total: [...cities.values()].reduce((s, n) => s + n, 0),
-      cities: [...cities.entries()]
-        .map(([city, count]) => ({ city, count }))
-        .sort((a, b) => b.count - a.count),
-    }))
-    .sort((a, b) => b.total - a.total);
+  const cities = [...cityMap.values()].sort((a, b) => b.count - a.count);
 
   const totalPhotos = photos.length;
-  const totalCountries = countries.length;
-  const totalCities = countries.reduce((s, c) => s + c.cities.length, 0);
+  // Still compute country distinct count for the stat tile, even
+  // though we don't render country groups any more.
+  const totalCountries = new Set(cities.map((c) => c.country)).size;
+  const totalCities = cities.length;
+
+  // Aggregate per country for the WorldDotMap. The map is the only
+  // place countries appear (cards are city-first now). Sorted by
+  // total desc so the dot sizes are still in a meaningful order.
+  const countryMap = new Map<string, number>();
+  for (const c of cities) {
+    countryMap.set(c.country, (countryMap.get(c.country) ?? 0) + c.count);
+  }
+  const countriesForMap = [...countryMap.entries()]
+    .map(([country, total]) => ({
+      country,
+      total,
+      // cities array isn't needed by WorldDotMap but the type
+      // requires it. Send an empty list (the cards above handle
+      // the per-city breakdown).
+      cities: [],
+    }))
+    .sort((a, b) => b.total - a.total);
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-12">
@@ -152,16 +176,21 @@ export default async function StatsPage() {
         <StatBox label="城市" value={totalCities} />
       </div>
 
-      {countries.length === 0 ? (
+      {cities.length === 0 ? (
         <p className="text-black/40 dark:text-white/40">
           还没有带位置的照片
         </p>
       ) : (
         <>
-          <WorldDotMap countries={countries} />
+          <WorldDotMap countries={countriesForMap} />
           <div className="mt-8 space-y-3">
-            {countries.map((c) => (
-              <CountryCard key={c.country} country={c} />
+            {cities.map((c) => (
+              <CityCard
+                key={`${c.country}::${c.city}`}
+                city={c.city}
+                country={c.country}
+                total={c.count}
+              />
             ))}
           </div>
         </>
@@ -174,37 +203,35 @@ export default async function StatsPage() {
   );
 }
 
-function CountryCard({
+function CityCard({
+  city,
   country,
+  total,
 }: {
-  country: { country: string; total: number; cities: Array<{ city: string; count: number }> };
+  city: string;
+  country: string;
+  total: number;
 }) {
+  // Each card is a single city. Country is shown as a subtitle
+  // (small grey text under the city name) so the geographic
+  // context is still visible. id="city-<region>" matches what
+  // the WorldDotMap dispatches via expandCountryCard().
   return (
     <section
-      id={`country-${country.country}`}
-      className="rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.02]"
+      id={`city-${city}-${country}`}
+      className="rounded-lg border border-black/10 bg-black/[0.02] dark:border-white/10 dark:bg-white/[0.02]"
     >
-      <CollapseCountryButton
-        title={country.country}
-        total={country.total}
-        cityCount={country.cities.length}
+      <CollapseGroupButton
+        title={city}
+        subtitle={country}
+        total={total}
+        itemCount={undefined}
       >
-        <ul className="space-y-1.5">
-          {country.cities.map((city) => (
-            <li
-              key={city.city}
-              className="flex items-baseline justify-between text-sm"
-            >
-              <span className="text-black/80 dark:text-white/80">
-                📍 {city.city}
-              </span>
-              <span className="tabular-nums text-black/40 dark:text-white/40">
-                {city.count}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </CollapseCountryButton>
+        <div className="text-xs text-black/55 dark:text-white/55">
+          {total} 张照片摄于{city}
+          {total > 1 ? '' : ''}
+        </div>
+      </CollapseGroupButton>
     </section>
   );
 }
