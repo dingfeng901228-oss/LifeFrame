@@ -1,149 +1,50 @@
-'use client';
+import { getLocale } from '@/lib/i18n-server';
+import { LifeFrameLogoMark } from '@/components/LifeFrameLogo';
+import { t, type Locale } from '@/lib/i18n';
+import LoginForm from '@/components/LoginForm';
 
-import { Suspense, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
+export const metadata = {
+  title: 'LifeFrame — 登录',
+  description: '登录 LifeFrame 解锁全部照片功能。',
+};
 
-function LoginInner() {
-  const router = useRouter();
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
-
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    // Frank #7108 #5: re-entry guard so a double-click mid-await
-    // doesn't double-fire the auth call or double-push.
-    if (pending) return;
-    setPending(true);
-    setError(null);
-    setMessage(null);
-
-    try {
-      const supabase = getSupabaseBrowserClient();
-      if (mode === 'signin') {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-        if (error) throw error;
-        // Frank #7084: always go home after login. `next` was
-        // producing a circular flow (guest visits /welcome →
-        // /login?next=/welcome → login → /welcome, never reaching
-        // the authed app). Authed users land on / (the app).
-        //
-        // Frank #7108 #5: push is OUTSIDE any transition wrapper
-        // (no `useTransition`) because router.push inside
-        // startTransition marks its internal state updates as
-        // non-urgent — if React batches them past the next paint
-        // (or the transition gets interrupted), the navigation can
-        // be lost in flight and the user stays on /login. Calling
-        // it synchronously after the await is the safe pattern.
-        router.push('/');
-        router.refresh();
-        // Don't reset pending — the navigation unmounts this
-        // component, so the spinner state is irrelevant.
-      } else {
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            emailRedirectTo: `${window.location.origin}/login`,
-          },
-        });
-        if (error) throw error;
-        // If email confirmation is disabled in Supabase, session
-        // is created immediately and we can redirect. Otherwise
-        // prompt user to check mail.
-        if (data.session) {
-          router.push('/');
-          router.refresh();
-        } else {
-          // Frank #7108 #5: clear pending here too — without it
-          // the button stays "处理中…" forever because no
-          // navigation happens to unmount us.
-          setMessage('注册成功！请到邮箱点击确认链接后再登录。');
-          setPending(false);
-        }
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      setPending(false);
-    }
-  }
-
+export default async function LoginPage() {
+  // Frank #0906 round-14 (Batch D): server-side, reads the locale
+  // cookie so the brand panel copy + form labels flip with the
+  // site-wide language switcher. The form itself is a client
+  // component (LoginForm) imported at the bottom.
+  const locale = await getLocale();
   return (
-    <div className="mx-auto max-w-sm px-6 py-16">
-      <h1 className="text-2xl font-light text-black dark:text-white">
-        {mode === 'signin' ? '登录' : '注册'}
-      </h1>
-      <p className="mt-2 text-sm text-black/50 dark:text-white/50">
-        登录后可查看更多照片，包括人物照片和完整时间轴。
-      </p>
-      <form onSubmit={onSubmit} className="mt-8 space-y-4">
-        <label className="block">
-          <span className="block text-xs text-black/60 dark:text-white/60">邮箱</span>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            autoComplete="email"
-            className="mt-1 block w-full rounded border border-black/15 dark:border-white/15 bg-black/5 dark:bg-white/5 px-3 py-2 text-sm text-black dark:text-white placeholder-black/40 dark:placeholder-white/40 focus:border-black/40 dark:focus:border-white/40 focus:outline-none"
-            placeholder="you@example.com"
-          />
-        </label>
-        <label className="block">
-          <span className="block text-xs text-black/60 dark:text-white/60">密码</span>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            minLength={6}
-            autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-            className="mt-1 block w-full rounded border border-black/15 dark:border-white/15 bg-black/5 dark:bg-white/5 px-3 py-2 text-sm text-black dark:text-white placeholder-black/40 dark:placeholder-white/40 focus:border-black/40 dark:focus:border-white/40 focus:outline-none"
-          />
-        </label>
-        {error && <p className="text-sm text-rose-700 dark:text-rose-300">{error}</p>}
-        {message && <p className="text-sm text-emerald-700 dark:text-emerald-300">{message}</p>}
-        <button
-          type="submit"
-          disabled={pending}
-          className="block w-full rounded bg-black px-4 py-2 text-sm font-medium text-white transition hover:bg-black/90 disabled:opacity-50 dark:bg-white dark:text-black dark:hover:bg-white/90"
-        >
-          {pending ? '处理中…' : mode === 'signin' ? '登录' : '注册'}
-        </button>
-      </form>
-      <p className="mt-6 text-center text-sm text-black/50 dark:text-white/50">
-        {mode === 'signin' ? '还没有账号？' : '已有账号？'}{' '}
-        <button
-          type="button"
-          onClick={() => {
-            setMode(mode === 'signin' ? 'signup' : 'signin');
-            setError(null);
-            setMessage(null);
-          }}
-          className="text-sky-700 underline dark:text-sky-300"
-        >
-          {mode === 'signin' ? '注册' : '登录'}
-        </button>
-      </p>
+    <div className="mx-auto grid min-h-[calc(100vh-65px)] max-w-5xl items-stretch px-6 py-12 lg:grid-cols-2 lg:gap-10">
+      {/* Brand panel — logo + tagline + 3 bullet points. Was empty
+          space before, which made the form look like it had been
+          pushed to a corner. On mobile (< lg) the panel collapses
+          and the form takes the full width. */}
+      <aside className="hidden flex-col justify-center lg:flex">
+        <Brand locale={locale} />
+      </aside>
+      <div className="mx-auto flex w-full max-w-sm items-center">
+        <LoginForm locale={locale} />
+      </div>
     </div>
   );
 }
 
-export default function LoginPage() {
+function Brand({ locale }: { locale: Locale }) {
   return (
-    <Suspense
-      fallback={
-        <div className="mx-auto max-w-sm px-6 py-16 text-black/40 dark:text-white/40">加载中…</div>
-      }
-    >
-      <LoginInner />
-    </Suspense>
+    <>
+      <LifeFrameLogoMark size={40} className="text-black dark:text-white" />
+      <p className="mt-4 text-2xl font-light text-black dark:text-white">
+        {t(locale, 'login.brandTitle')}
+      </p>
+      <p className="mt-2 text-sm text-black/60 dark:text-white/60">
+        {t(locale, 'login.brandSubtitle')}
+      </p>
+      <ul className="mt-8 space-y-3 text-sm text-black/70 dark:text-white/70">
+        <li>📍 {t(locale, 'login.bullet.gps')}</li>
+        <li>⏳ {t(locale, 'login.bullet.timeline')}</li>
+        <li>🔒 {t(locale, 'login.bullet.private')}</li>
+      </ul>
+    </>
   );
 }

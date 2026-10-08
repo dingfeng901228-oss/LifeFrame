@@ -415,11 +415,11 @@ export function HomeGallery({ locale }: { locale: Locale }) {
             country paths when the user zooms the earth in hard
             — this was the iPad / narrow-desktop bug where the
             enlarged earth drew over the title. */}
-        <div className="relative z-10 flex-shrink-0 px-6 pt-8 pb-4 text-center">
-          <p className="text-xs tracking-[0.4em] text-black/50 dark:text-white/50 uppercase">
-            {t(locale, 'hero.japaneseSubtitle')}
-          </p>
-          <h1 className="mt-3 text-3xl font-light text-black dark:text-white md:text-4xl lg:text-5xl">
+        <div className="relative z-10 flex-shrink-0 px-6 pt-6 pb-3 text-center">
+                  <p className="text-[11px] tracking-[0.4em] text-black/50 dark:text-white/50 uppercase">
+                    {t(locale, 'hero.japaneseSubtitle')}
+                  </p>
+                  <h1 className="mt-2 text-2xl font-light text-black dark:text-white sm:text-3xl lg:text-4xl">
             {t(locale, 'hero.title')}
           </h1>
           <p className="mx-auto mt-3 max-w-md text-sm text-black/60 dark:text-white/60">

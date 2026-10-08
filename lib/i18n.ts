@@ -65,8 +65,8 @@ const dict: Dict = {
     ja: '仕組みを見る',
   },
   'hero.searchPlaceholder': {
-    zh: '🔍 搜索照片 (文件名 / 地点 / 分类)...',
-    ja: '🔍 写真を検索 (ファイル名 / 場所 / カテゴリー)...',
+    zh: '🔍 搜索照片…',
+    ja: '🔍 写真を検索…',
   },
   // aria-label on the search input — same as placeholder minus the icon.
   'hero.searchAriaLabel': {
@@ -512,6 +512,45 @@ const dict: Dict = {
     zh: '个人照片生活记录与时空记忆展示网站。',
     ja: '個人の写真で暮らしと時空の記録を残すサイト。',
   },
+  // Frank #0906 round-14 (Batch D): login page brand panel
+  // copy (logo + tagline + bullet points on the left side of the
+  // two-column login layout) + every form label / button copy so
+  // the entire page flips with the site-wide language switcher.
+  'login.brandTitle': {
+    zh: '用照片，留下生活的痕迹',
+    ja: '写真で、暮らしの痕跡を残す',
+  },
+  'login.brandSubtitle': {
+    zh: '登录后解锁全部功能：人物标签、完整时间轴、原始 EXIF。',
+    ja: 'ログイン後に全ての機能を解放：人物ラベル、タイムライン全体、EXIF 原本。',
+  },
+  'login.bullet.gps': {
+    zh: '按 GPS 把照片投射到地球上',
+    ja: 'GPS で写真を地球儀に投影',
+  },
+  'login.bullet.timeline': {
+    zh: '沿时间轴「拖动」回到任一天',
+    ja: 'タイムラインで「ドラッグ」してその日へ',
+  },
+  'login.bullet.private': {
+    zh: '默认私密，可选公开分享',
+    ja: 'デフォルト非公開、共有は任意で',
+  },
+  'login.title.signIn': { zh: '登录', ja: 'ログイン' },
+  'login.title.signUp': { zh: '注册', ja: '登録' },
+  'login.subtitle': {
+    zh: '登录后可查看更多照片，包括人物照片和完整时间轴。',
+    ja: 'ログイン後に人物写真、タイムライン全体など全ての写真が見られます。',
+  },
+  'login.field.email': { zh: '邮箱', ja: 'メール' },
+  'login.field.password': { zh: '密码', ja: 'パスワード' },
+  'login.submit.pending': { zh: '处理中…', ja: '処理中…' },
+  'login.submit.signIn': { zh: '登录', ja: 'ログイン' },
+  'login.submit.signUp': { zh: '注册', ja: '登録' },
+  'login.toggle.toSignup': { zh: '还没有账号？', ja: 'アカウント未登録？' },
+  'login.toggle.toSignin': { zh: '已有账号？', ja: '登録済み？' },
+  'login.toggle.cta.signUp': { zh: '注册', ja: '登録' },
+  'login.toggle.cta.signIn': { zh: '登录', ja: 'ログイン' },
 };
 
 export function t(

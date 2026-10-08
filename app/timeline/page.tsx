@@ -48,6 +48,14 @@ function groupByMonth(photos: PhotoRow[]): MonthGroup[] {
   });
 }
 
+// Frank #0906 round-14 (Batch B): cap each month's preview at
+// PREVIEW_PER_MONTH cards. Without this cap, the timeline page
+// renders ~1300 <img> elements for the public photo set (each
+// `aspect-square` grid cell ≈ 288×288 CSS px), which made the
+// page 16693 px tall on desktop — DOM heavy, scroll hell on
+// phones. The full set is still reachable via /timeline/[YYYY-MM].
+const PREVIEW_PER_MONTH = 12;
+
 export default async function TimelinePage() {
   // PRD §15: Timeline View — second browsing mode. Public-ish page:
   // anonymous-key fetch via createSupabaseServerClient, but we explicitly
@@ -93,40 +101,54 @@ export default async function TimelinePage() {
         <p className="text-black/40 dark:text-white/40">还没有照片</p>
       ) : (
         <div className="space-y-12">
-          {months.map((m) => (
-            <section key={m.key}>
-              <h2 className="mb-4 flex items-baseline gap-3 text-xl font-light text-black dark:text-white">
-                {m.label}
-                <span className="text-sm text-black/40 dark:text-white/40">
-                  ({m.photos.length})
-                </span>
-              </h2>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-                {m.photos.map((p) => (
-                  <Link
-                    key={p.key}
-                    href={`/p/${encodeURIComponent(p.key)}`}
-                    className="group relative overflow-hidden rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.02] transition hover:border-black/30 dark:hover:border-white/30"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={p.thumbnail_url || p.public_url}
-                      alt={p.filename}
-                      className="aspect-square w-full object-cover transition group-hover:scale-105"
-                      loading="lazy"
-                    />
-                    {p.location_name && (
-                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2">
-                        <p className="truncate text-xs text-white/90">
-                          📍 {p.location_name}
-                        </p>
-                      </div>
-                    )}
-                  </Link>
-                ))}
-              </div>
-            </section>
-          ))}
+          {months.map((m) => {
+            const shown = m.photos.slice(0, PREVIEW_PER_MONTH);
+            const hidden = m.photos.length - shown.length;
+            return (
+              <section key={m.key}>
+                <h2 className="mb-4 flex items-baseline gap-3 text-xl font-light text-black dark:text-white">
+                  {m.label}
+                  <span className="text-sm text-black/40 dark:text-white/40">
+                    ({m.photos.length})
+                  </span>
+                </h2>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                  {shown.map((p) => (
+                    <Link
+                      key={p.key}
+                      href={`/p/${encodeURIComponent(p.key)}`}
+                      className="group relative overflow-hidden rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.02] transition hover:border-black/30 dark:hover:border-white/30"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={p.thumbnail_url || p.public_url}
+                        alt={p.filename}
+                        className="aspect-square w-full object-cover transition group-hover:scale-105"
+                        loading="lazy"
+                      />
+                      {p.location_name && (
+                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2">
+                          <p className="truncate text-xs text-white/90">
+                            📍 {p.location_name}
+                          </p>
+                        </div>
+                      )}
+                    </Link>
+                  ))}
+                </div>
+                {hidden > 0 && (
+                  <div className="mt-4 flex items-center justify-center">
+                    <Link
+                      href={`/timeline/${m.key}`}
+                      className="inline-flex items-center gap-2 rounded-full border border-black/15 dark:border-white/15 px-4 py-2 text-sm text-black/70 dark:text-white/70 transition hover:border-black/40 hover:text-black dark:hover:border-white/40 dark:hover:text-white"
+                    >
+                      查看 {m.label} 全部 {m.photos.length} 张 →
+                    </Link>
+                  </div>
+                )}
+              </section>
+            );
+          })}
         </div>
       )}
 
