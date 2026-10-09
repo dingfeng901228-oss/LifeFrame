@@ -5,7 +5,26 @@ import LoginForm from '@/components/LoginForm';
 
 export const metadata = {
   title: 'LifeFrame — 登录',
-  description: '登录 LifeFrame 解锁全部照片功能。',
+  description: '登录 LifeFrame 解锁全部照片功能：人物标签、完整时间轴、原始 EXIF。',
+  // Frank #7243 review: complete the metadata block so Lighthouse
+  // SEO audit on /login doesn't fail on the "Document doesn't have
+  // a valid hreflang" / "links cannot be crawled" heuristics. The
+  // page is noindex via layout (robots: noindex, follow) so this
+  // is purely a scoreboard number; non-indexed auth pages get
+  // ~50/100 by default because Lighthouse penalises missing
+  // OG image + keywords + canonical even when the page should
+  // never rank. Adding them lifts the score to 100 without
+  // changing actual SEO behaviour.
+  keywords: 'LifeFrame,登录,signup,signin,照片,账户,auth',
+  openGraph: {
+    title: 'LifeFrame — 登录',
+    description: '登录 LifeFrame 解锁全部照片功能。',
+    type: 'website',
+  },
+  // Self-canonical. /login has no ?next= variant in search (those
+  // redirect to /login?next=/upload etc and are noindexed), so a
+  // bare self-canonical is fine.
+  alternates: { canonical: '/login' },
 };
 
 export default async function LoginPage() {
