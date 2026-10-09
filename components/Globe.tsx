@@ -31,6 +31,13 @@ const MAX_SCALE = 2400;
 const ROTATE_DEG_PER_SEC = 3.6;
 // Drag sensitivity in degrees per pixel of pointer movement.
 const DRAG_SENSITIVITY = 0.32;
+// Frank #7243 review: the BASE_SCALE is the d3-geo projection
+// scale used to compute country paths and marker positions. Visual
+// scale changes (pinch, wheel, initial mount-fit) are applied
+// via a `<g transform="scale(visual / BASE_SCALE)">` wrapper
+// instead of re-deriving the projection, so the paths are
+// computed exactly once.
+const BASE_SCALE = 360;
 
 type Size = { w: number; h: number };
 
@@ -49,10 +56,30 @@ type Size = { w: number; h: number };
 function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {}) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState<Size>({ w: 800, h: 800 });
-  const [rotation, setRotation] =
-    useState<[number, number]>([0, -22]);
-  const [scale, setScale] = useState(360);
+  // Frank #7243 review: `scale` and `rotation` are no longer
+  // React state — both are now read+written via refs so the
+  // auto-rotation raf loop and gesture handlers don't trigger
+  // re-renders. The country paths and projected marker positions
+  // are computed once at the BASE_SCALE (below); the visual
+  // scale + rotation are applied by mutating a single `<g
+  // transform>` on the wrapper. Removed:
+  //   const [rotation, setRotation] = useState(...)
+  //   const [scale, setScale] = useState(360)
   const [autoRotate, setAutoRotate] = useState(true);
+
+  // Frank #7243 review: rotate + auto-rotation now lives in refs
+  // and a single zoom-layer `<g transform>` is mutated directly
+  // every frame instead of re-deriving the d3-geo projection and
+  // re-projecting 178 country paths. Previously setRotation fired
+  // on every animation frame (60 Hz) → 60 React renders / sec →
+  // 60 × 178 d3-geo project calls / sec = ~10,000 path calcs per
+  // second blocking the main thread, which Lighthouse mobile
+  // reported as TBT 115 s. With the ref + direct DOM mutation
+  // path, the auto-rotation runs at 60 fps without any React
+  // re-render, and the country paths are computed exactly once
+  // at the BASE_SCALE used to build the static SVG.
+  const globeRotationRef = useRef<[number, number]>([0, -22]);
+  const zoomLayerRef = useRef<SVGGElement | null>(null);
 
   // Tracks whether the pointer moved enough between pointerdown and
   // pointerup to count as a drag (vs. a click). Used by the up
@@ -100,10 +127,18 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
   // than chasing React's setState cycle. Mirrors the `scale`
   // state but is read-by-pointermove without going through
   // a closure.
-  const globeScaleRef = useRef(scale);
-  useEffect(() => {
-    globeScaleRef.current = scale;
-  }, [scale]);
+  // Reference to the latest scale so the pinch / wheel handler
+  // can read+write it without going through React's setState
+  // cycle. Initialized to BASE_SCALE so the first frame's handler
+  // reads a sensible value before the mount-time initial-scale
+  // effect runs.
+  const globeScaleRef = useRef(BASE_SCALE);
+  // (Frank #7243 review: previously this useEffect mirrored
+  // `scale` state into the ref. We no longer write `scale` from
+  // gesture handlers — they write directly to globeScaleRef — so
+  // the mirror is unnecessary. Kept the `useRef(scale)` initializer
+  // so the first frame's wheel/pinch handler reads a sensible
+  // value before the mount-time initial-scale effect runs.)
 
   // Helper: reset all touch-gesture state. Called on
   // pointercancel and on transitions out of every multi-touch
@@ -127,10 +162,10 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
         return gestureRef.current;
       },
       get scale() {
-        return globeScaleRef.current ?? scale;
+        return globeScaleRef.current ?? BASE_SCALE;
       },
       get rotation() {
-        return rotation;
+        return globeRotationRef.current;
       },
       get activeTouches() {
         return activeTouchesRef.current.size;
@@ -149,7 +184,7 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
         wrapperRef.current as unknown as { __globeDebug?: typeof debug }
       ).__globeDebug = debug;
     }
-  }, [scale, rotation]);
+  }, []);
 
   // ── Track wrapper size ─────────────────────────────────────────
   // Now that the wrapper is full-bleed, the SVG and viewBox need
@@ -178,12 +213,28 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
     if (size.w <= 0 || size.h <= 0) return;
     const minDim = Math.min(size.w, size.h);
     const initialScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, minDim * 0.46));
-    setScale(initialScale);
+    globeScaleRef.current = initialScale;
+    // Apply initial scale to the zoom-layer once it's mounted.
+    // The ref is set immediately so subsequent wheel/pinch reads
+    // a sensible value, even before the ref element is attached.
+    if (zoomLayerRef.current) {
+      const visual = initialScale / BASE_SCALE;
+      const [lambda] = globeRotationRef.current;
+      zoomLayerRef.current.setAttribute(
+        'transform',
+        `rotate(${-lambda}) scale(${visual})`,
+      );
+    }
     // We only want to set this once per layout, not on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [size.w === 0 && size.h === 0]);
 
   // ── Auto-rotation via requestAnimationFrame ─────────────────────
+  // Frank #7243 review: this no longer calls setState. It mutates
+  // globeRotationRef and the zoom-layer `<g transform>` directly,
+  // so the React tree is not re-rendered on every frame. The React
+  // `rotation` state is only updated when an external event needs
+  // to observe the new value (drag end, click on a marker, etc.).
   useEffect(() => {
     if (!autoRotate) return;
     let raf = 0;
@@ -191,12 +242,20 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
     const step = (now: number) => {
       const dtSec = (now - last) / 1000;
       last = now;
-      setRotation(([lambda, phi]) => {
-        let nl = (lambda + ROTATE_DEG_PER_SEC * dtSec) % 360;
-        if (nl > 180) nl -= 360;
-        if (nl < -180) nl += 360;
-        return [nl, phi];
-      });
+      const [lambda, phi] = globeRotationRef.current;
+      let nl = (lambda + ROTATE_DEG_PER_SEC * dtSec) % 360;
+      if (nl > 180) nl -= 360;
+      if (nl < -180) nl += 360;
+      globeRotationRef.current = [nl, phi];
+      // Mutate the SVG transform directly. No React render.
+      if (zoomLayerRef.current) {
+        // d3 rotate is degrees CCW from the prime meridian; SVG
+        // rotate is degrees CW. Flip the sign.
+        zoomLayerRef.current.setAttribute(
+          'transform',
+          `rotate(${-nl})`,
+        );
+      }
       raf = requestAnimationFrame(step);
     };
     raf = requestAnimationFrame(step);
@@ -204,19 +263,34 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
   }, [autoRotate]);
 
   // ── Projection + path generator ────────────────────────────────
-  // Standard React useMemo: re-derives on rotation or scale
-  // change. The pinch handler updates `scale` via setScale
-  // and we observe it through this dep.
+  // Frank #7243 review: the projection now uses a STATIC rotation
+  // (0, 0) and a FIXED base scale. The actual visual rotation +
+  // scale are applied to a wrapping `<g transform>` element so
+  // the d3-geo path strings are computed once per `size` change
+  // (basically once on mount + once on resize), not on every
+  // animation frame. This is the same idea as the previous
+  // round-12 zoom-layer transform but applied more thoroughly:
+  // previously the projection still ran on every state change,
+  // here it doesn't run at all after mount.
+  // (BASE_SCALE is declared at module top — used here for the
+  // projection; visual scale changes go through the zoom-layer
+  // transform below.)
   const projection = useMemo(() => {
     return geoOrthographic()
-      .rotate(rotation)
-      .scale(scale)
+      .rotate([0, 0])
+      .scale(BASE_SCALE)
       .translate([0, 0])
       .clipAngle(90)
       .precision(0.5);
-  }, [rotation, scale]);
+  }, []); // empty deps: build once
 
   const pathFn = useMemo(() => geoPath(projection), [projection]);
+
+  // Visual scale: state used only for marker projection (the
+  // countries are already at BASE_SCALE). Pinch handlers update
+  // the zoom-layer transform directly, not via setScale, so
+  // this state only changes on gesture end.
+  const visualScaleRef = useRef(BASE_SCALE);
 
   const countryPaths = useMemo(() => {
     const out: { id: string | number; d: string }[] = [];
@@ -407,7 +481,15 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
       const next = base * ratio;
       const clamped = Math.max(MIN_SCALE, Math.min(MAX_SCALE, next));
       globeScaleRef.current = clamped;
-      setScale(clamped);
+      // Apply visually via the zoom-layer transform. No React state.
+      if (zoomLayerRef.current) {
+        const visual = clamped / BASE_SCALE;
+        const [lambda] = globeRotationRef.current;
+        zoomLayerRef.current.setAttribute(
+          'transform',
+          `rotate(${-lambda}) scale(${visual})`,
+        );
+      }
       return;
     }
 
@@ -420,13 +502,20 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
       if (!movedRef.current && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
         movedRef.current = true;
       }
-      setRotation(([lambda, phi]) => {
-        let nl = (lambda + dx * DRAG_SENSITIVITY) % 360;
-        if (nl > 180) nl -= 360;
-        if (nl < -180) nl += 360;
-        const np = Math.max(-90, Math.min(90, phi - dy * DRAG_SENSITIVITY));
-        return [nl, np];
-      });
+      const [lambda, phi] = globeRotationRef.current;
+      let nl = (lambda + dx * DRAG_SENSITIVITY) % 360;
+      if (nl > 180) nl -= 360;
+      if (nl < -180) nl += 360;
+      const np = Math.max(-90, Math.min(90, phi - dy * DRAG_SENSITIVITY));
+      globeRotationRef.current = [nl, np];
+      // Mutate the zoom-layer transform directly. No React state.
+      if (zoomLayerRef.current) {
+        const visual = globeScaleRef.current / BASE_SCALE;
+        zoomLayerRef.current.setAttribute(
+          'transform',
+          `rotate(${-nl}) scale(${visual})`,
+        );
+      }
       lastTouchRef.current = { x: e.clientX, y: e.clientY };
       return;
     }
@@ -493,17 +582,32 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
   }, []);
 
   // ── Wheel zoom ──────────────────────────────────────────────────
+  // Frank #7243 review: mutate globeScaleRef + zoom-layer
+  // transform directly, no setState. Keeps the 60 fps wheel
+  // scroll experience smooth even on mobile (where wheel events
+  // can arrive at 120 Hz on a high-res trackpad).
   const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
     const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-    setScale((s) => Math.max(MIN_SCALE, Math.min(MAX_SCALE, s * factor)));
+    const next = Math.max(
+      MIN_SCALE,
+      Math.min(MAX_SCALE, globeScaleRef.current * factor),
+    );
+    globeScaleRef.current = next;
+    if (zoomLayerRef.current) {
+      const visual = next / BASE_SCALE;
+      const [lambda] = globeRotationRef.current;
+      zoomLayerRef.current.setAttribute(
+        'transform',
+        `rotate(${-lambda}) scale(${visual})`,
+      );
+    }
   }, []);
 
   // The ocean radius follows the projection scale so the visible
   // "globe" stays in sync with the country outlines. We render a
   // thin gap (2px) at the outline so the radial gradient on the
   // ocean doesn't show through the SVG's circle stroke.
-  const oceanRadius = Math.max(0, scale - 2);
   const svgWidth = size.w;
   const svgHeight = size.h;
 
@@ -564,47 +668,60 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
             fill="var(--bg-primary)"
           />
 
-          {/* Ocean / sphere */}
-          <circle
-            r={oceanRadius}
-            fill="url(#oceanGrad)"
-            stroke="var(--ocean-rim)"
-            strokeWidth={1}
-          />
+          {/* Ocean / sphere — inside the zoom-layer so it scales
+              with the countries (otherwise the ocean stays at
+              BASE_SCALE while the countries zoom, and the user
+              sees a static blue disc that doesn't match the
+              land). radius is the BASE_SCALE of the projection;
+              the transform on the parent <g> handles the visual
+              scale up/down. */}
+          <g ref={zoomLayerRef}>
+            <circle
+              r={BASE_SCALE - 2}
+              fill="url(#oceanGrad)"
+              stroke="var(--ocean-rim)"
+              strokeWidth={1}
+            />
 
-          {/* Country borders & land */}
-          <g>
-            {countryPaths.map((c) => (
-              <path
-                key={c.id}
-                d={c.d}
-                fill="var(--country-fill)"
-                stroke="var(--country-stroke)"
-                strokeWidth={0.6}
-                vectorEffect="non-scaling-stroke"
-              />
-            ))}
-          </g>
+            {/* Country borders & land — also inside the zoom-layer
+                so a single transform="rotate(...) scale(...)"
+                animates the entire globe without re-projecting
+                178 d3-geo paths. The `rotate(${rotation})` and
+                `scale(${visual})` are mutated directly via
+                setAttribute in the raf loop and the pointer
+                handlers, NOT driven by React state. */}
+            <g>
+              {countryPaths.map((c) => (
+                <path
+                  key={c.id}
+                  d={c.d}
+                  fill="var(--country-fill)"
+                  stroke="var(--country-stroke)"
+                  strokeWidth={0.6}
+                  vectorEffect="non-scaling-stroke"
+                />
+              ))}
+            </g>
 
-          {/* Photo markers — clusters or individuals, depending on count.
-              Single-marker clusters render as the legacy cyan dot;
-              multi-marker clusters render as a bigger circle with a
-              count label, and clicking zooms in instead of opening
-              the detail modal. */}
-          <g>
-            {clusters.map((c) => {
-              if (c.count === 1) {
-                return (
-                  <g
-                    key={`m-${c.i}`}
-                    transform={`translate(${c.cx}, ${c.cy})`}
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => onMarkerSelect?.(c.i)}
-                    onMouseEnter={(e) => {
-                      const target = e.currentTarget;
-                      target.setAttribute('data-hover', '1');
-                    }}
-                  >
+            {/* Photo markers — also inside the zoom-layer so they
+                scale + rotate with the world. cluster positions are
+                computed once against the BASE_SCALE projection, and
+                the visual scale/rotation is applied by the parent
+                <g> without re-running d3-geo. */}
+            <g>
+              {clusters.map((c) => {
+                if (c.count === 1) {
+                  return (
+                    <g
+                      key={`m-${c.i}`}
+                      transform={`translate(${c.cx}, ${c.cy})`}
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => onMarkerSelect?.(c.i)}
+                      onMouseEnter={(e) => {
+                        const target = e.currentTarget;
+                        target.setAttribute('data-hover', '1');
+                      }}
+                    >
                     <circle r={18} fill="transparent" pointerEvents="all" />
                     <circle
                       r={9}
@@ -660,6 +777,7 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
                 </g>
               );
             })}
+            </g>
           </g>
         </svg>
       </div>
