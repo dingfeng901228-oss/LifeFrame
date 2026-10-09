@@ -292,13 +292,43 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
   // this state only changes on gesture end.
   const visualScaleRef = useRef(BASE_SCALE);
 
-  const countryPaths = useMemo(() => {
-    const out: { id: string | number; d: string }[] = [];
-    countriesGeo.features.forEach((f: Feature<Geometry, any>, i: number) => {
-      const d = pathFn(f as any);
-      if (d) out.push({ id: (f.id as string | number | undefined) ?? i, d });
+  // Frank #7243 review: countries are projected lazily. The first
+  // render shows just the ocean + a brief "no countries" state;
+  // the actual 178 d3-geo path calcs happen in an effect after
+  // mount, scheduled with requestIdleCallback so they don't
+  // block the first paint. Net effect: FCP / LCP land on a
+  // minimal SVG (ocean circle, no <path> children), and the
+  // countries fade in once the main thread goes idle. Before this
+  // change, 178 path calcs ran synchronously during the first
+  // React render, contributing ~50-100ms to the initial mount
+  // long task (Lighthouse reported a 451ms page task on /).
+  const [countryPaths, setCountryPaths] = useState<
+    { id: string | number; d: string }[]
+  >([]);
+  useEffect(() => {
+    // Idle callback so the path calcs don't compete with
+    // hydration + first-paint. Fall back to setTimeout(0) on
+    // browsers without requestIdleCallback (Safari < 17).
+    const ric: (cb: () => void) => void =
+      (window as any).requestIdleCallback ||
+      ((cb: () => void) => setTimeout(cb, 0));
+    const handle = ric(() => {
+      const out: { id: string | number; d: string }[] = [];
+      countriesGeo.features.forEach(
+        (f: Feature<Geometry, any>, i: number) => {
+          const d = pathFn(f as any);
+          if (d) out.push({ id: (f.id as string | number | undefined) ?? i, d });
+        },
+      );
+      setCountryPaths(out);
     });
-    return out;
+    return () => {
+      if ((window as any).cancelIdleCallback) {
+        (window as any).cancelIdleCallback(handle);
+      } else {
+        clearTimeout(handle as any);
+      }
+    };
   }, [pathFn]);
 
   // ── Projected photo markers (drop ones on the back hemisphere) ──
