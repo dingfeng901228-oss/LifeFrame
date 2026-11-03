@@ -9,6 +9,7 @@ import { LifeJourney } from '@/components/LifeJourney';
 import { PhotoViewer, type PhotoRow } from '@/components/PhotoViewer';
 import { copyText, useUrlViewState } from '@/lib/use-view-state';
 import { OnThisDayCard } from '@/components/OnThisDayCard';
+import { PlacePanel } from '@/components/PlacePanel';
 import { SearchBox } from '@/components/SearchBox';
 import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
 import { photoImageUrl } from '@/lib/photo-url';
@@ -30,6 +31,10 @@ export function HomeGallery({ locale }: { locale: Locale }) {
   // doesn't have to know how to hard-refresh the page.
   const [reloadToken, setReloadToken] = useState(0);
   const [selected, setSelected] = useState<PhotoRow | null>(null);
+  // Frank #7243 round-5: when the Places panel opens the viewer,
+  // the viewer is scoped to THAT place's photos, so prev/next walks
+  // the location instead of the whole archive.
+  const [viewerScope, setViewerScope] = useState<PhotoRow[] | null>(null);
   // Frank #7243 round-3: the selected date and the search query now
   // live in the URL hash, borrowed from OldMapsOnline / TimeMap
   // (#position=.../&year=...). Any view can be shared or bookmarked,
@@ -58,8 +63,11 @@ export function HomeGallery({ locale }: { locale: Locale }) {
     shareTimer.current = setTimeout(() => setShareState('idle'), 2400);
   }, [shareUrl]);
   const [onThisDayOpen, setOnThisDayOpen] = useState(false);
-  const [clusterOpen, setClusterOpen] = useState(false);
-  const [clusterPhotos, setClusterPhotos] = useState<PhotoRow[]>([]);
+  // Frank #7243 round-5: the Places-layer panel. Replaces both the
+  // "single marker → full-screen viewer" jump and the heavy
+  // cluster modal: clicking the globe now opens a light panel that
+  // keeps the Globe in view (TimeMap's Places layer behaviour).
+  const [placePhotos, setPlacePhotos] = useState<PhotoRow[]>([]);
   const [timeTravelOpen, setTimeTravelOpen] = useState(false);
   const [lifeJourneyOpen, setLifeJourneyOpen] = useState(false);
   // null = not loaded yet / guest; set after auth.getSession() resolves.
@@ -151,11 +159,11 @@ export function HomeGallery({ locale }: { locale: Locale }) {
       if (e.key !== 'Escape') return;
       if (selected) return; // PhotoViewer owns ESC here
       if (onThisDayOpen) setOnThisDayOpen(false);
-      else if (clusterOpen) setClusterOpen(false);
+      else if (placePhotos.length > 0) setPlacePhotos([]);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selected, onThisDayOpen, clusterOpen]);
+  }, [selected, onThisDayOpen, placePhotos]);
 
   // Resolve the current session so the photo detail's ❤ button can
   // // decide between "show clickable ❤" (signed in) and "show '登录
@@ -266,10 +274,13 @@ export function HomeGallery({ locale }: { locale: Locale }) {
   // Stable Globe handlers — useCallback so the React.memo wrap
   // around Globe can short-circuit re-renders when markers + handlers
   // are unchanged across selectedDate ticks during Time Travel.
+  // Frank #7243 round-5: a single marker now opens the Places
+  // panel instead of the full-screen viewer, so the Globe stays
+  // visible behind it.
   const handleMarkerSelect = useCallback(
     (idx: number) => {
       const photo = visiblePhotos[idx];
-      if (photo) setSelected(photo);
+      if (photo) setPlacePhotos([photo]);
     },
     [visiblePhotos],
   );
@@ -282,12 +293,19 @@ export function HomeGallery({ locale }: { locale: Locale }) {
           (p): p is PhotoRow & { lat: number; lng: number } => Boolean(p),
         );
       if (photos.length > 0) {
-        setClusterPhotos(photos);
-        setClusterOpen(true);
+        setPlacePhotos(photos);
       }
     },
     [visiblePhotos],
   );
+
+  // Frank #7243 round-5: open the full-screen viewer scoped to a
+  // place. `at` is the photo to land on.
+  const openPlaceInViewer = useCallback((photos: PhotoRow[], at: PhotoRow) => {
+    setViewerScope(photos);
+    setPlacePhotos([]);
+    setSelected(at);
+  }, []);
 
   const visibleCount = visiblePhotos.length;
 
@@ -479,7 +497,7 @@ export function HomeGallery({ locale }: { locale: Locale }) {
               down — a real CLS (0.118) on mobile. A floating
               widget moves nothing. Compact variant, because the
               mobile Globe is only 44vh tall. */}
-          {memoryCard && (
+          {memoryCard && placePhotos.length === 0 && (
             <div className="absolute inset-x-0 bottom-0 z-20 px-2 pb-2">
               <OnThisDayCard
                 groups={memoryCard.groups}
@@ -494,7 +512,18 @@ export function HomeGallery({ locale }: { locale: Locale }) {
               />
             </div>
           )}
-</div>
+{placePhotos.length > 0 && (
+            <div className="absolute inset-x-0 bottom-0 z-30 px-2 pb-2 md:inset-x-auto md:bottom-4 md:right-4 md:w-[330px] md:px-0 md:pb-0">
+              <PlacePanel
+                photos={placePhotos}
+                locale={locale}
+                onClose={() => setPlacePhotos([])}
+                onOpenAll={(photos) => openPlaceInViewer(photos, photos[0])}
+                onOpenPhoto={(photos, photo) => openPlaceInViewer(photos, photo)}
+              />
+            </div>
+          )}
+          </div>
 
         {/* Mobile controls row — Frank #0906 round-13 (P2 #14
             cont. 2): the mobile layout now gets the same search
@@ -678,7 +707,7 @@ export function HomeGallery({ locale }: { locale: Locale }) {
               controls panel below was already at the viewport
               limit, and an in-flow card pushed the Timeline off
               screen. */}
-          {memoryCard && (
+          {memoryCard && placePhotos.length === 0 && (
             <div className="absolute bottom-3 left-3 z-20 w-[min(330px,calc(100%-1.5rem))]">
               <OnThisDayCard
                 groups={memoryCard.groups}
@@ -692,7 +721,18 @@ export function HomeGallery({ locale }: { locale: Locale }) {
               />
             </div>
           )}
-        </div>
+        {placePhotos.length > 0 && (
+            <div className="absolute inset-x-0 bottom-0 z-30 px-2 pb-2 md:inset-x-auto md:bottom-4 md:right-4 md:w-[330px] md:px-0 md:pb-0">
+              <PlacePanel
+                photos={placePhotos}
+                locale={locale}
+                onClose={() => setPlacePhotos([])}
+                onOpenAll={(photos) => openPlaceInViewer(photos, photos[0])}
+                onOpenPhoto={(photos, photo) => openPlaceInViewer(photos, photo)}
+              />
+            </div>
+          )}
+          </div>
 
         {/* Feature controls — search, on-this-day, time travel,
             life journey. Sit on a clean row beneath the Globe
@@ -837,12 +877,15 @@ export function HomeGallery({ locale }: { locale: Locale }) {
           See components/PhotoViewer.tsx for full implementation. */}
       {selected && (
         <PhotoViewer
-          photos={visiblePhotos}
+          photos={viewerScope ?? visiblePhotos}
           initialPhoto={selected}
           locale={locale}
           isSignedIn={Boolean(sessionUserId)}
           sessionUserId={sessionUserId}
-          onClose={() => setSelected(null)}
+          onClose={() => {
+            setSelected(null);
+            setViewerScope(null);
+          }}
         />
       )}
 
@@ -852,62 +895,7 @@ export function HomeGallery({ locale }: { locale: Locale }) {
           "3" badge becomes a way to actually view those 3 photos
           instead of an opaque count. Click a thumbnail to close
           this modal and open the photo detail modal. */}
-      {clusterOpen && (
-        <div
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm"
-          onClick={() => setClusterOpen(false)}
-        >
-          <div
-            className="absolute inset-4 overflow-auto md:inset-12"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-6 flex items-center justify-between">
-              <h2 className="text-2xl font-light text-white">
-                📍 同地点照片 · {clusterPhotos.length} 张
-              </h2>
-              <button
-                type="button"
-                onClick={() => setClusterOpen(false)}
-                className="rounded border border-white/20 px-3 py-1 text-sm text-white/70 hover:bg-white/10"
-              >
-                ✕ 关闭
-              </button>
-            </div>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-              {clusterPhotos.map((p) => (
-                <button
-                  key={p.key}
-                  type="button"
-                  onClick={() => {
-                    setClusterOpen(false);
-                    // Frank #7509: the PhotoViewer navigates
-                    // visiblePhotos chronologically; cluster
-                    // photos are adjacent in time at the same
-                    // location, so this naturally walks through
-                    // them.
-                    setSelected(p);
-                  }}
-                  className="aspect-square overflow-hidden rounded border border-white/10 transition hover:border-white/40"
-                  title={p.filename}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    // Frank #7243 Task 2: cluster thumbnails via
-                    // the auth-gated proxy in 256 size — the grid
-                    // renders dozens of thumbs so full-size
-                    // originals would hammer R2.
-                    src={photoImageUrl(p, '256')}
-                    alt={p.filename}
-                    className="h-full w-full object-cover"
-                    loading="lazy"
-                  />
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
+      
       {/* On This Day modal (§19). Same grid-of-thumbnails UX as the
           gallery modal but filtered to today's month-day across all
           years, grouped per year. Clicking a thumbnail closes this

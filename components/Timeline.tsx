@@ -358,6 +358,15 @@ export function Timeline({
     [photos, onChange],
   );
 
+  // The share button's visible label; the accessible name is built
+  // from it (WCAG 2.5.3 Label in Name).
+  const shareLabel =
+    shareState === 'copied'
+      ? '✓ 已复制'
+      : shareState === 'manual'
+        ? '📋 请手动复制'
+        : '🔗 分享';
+
   const handlePos = selectedDate ? positionFor(selectedDate) : null;
   const halfWindowPct = (windowDays / 2 / (totalSpan / MS_PER_DAY)) * 100;
   const rangeStart =
@@ -387,17 +396,18 @@ export function Timeline({
               type="button"
               onClick={onShare}
               title="复制当前视图的链接"
-              aria-label="复制当前视图的链接"
+              // WCAG 2.5.3 Label in Name: the accessible name must
+              // CONTAIN the visible text, otherwise voice-control
+              // users saying "click 分享" hit the wrong thing.
+              // axe flagged this as
+              // label-content-name-mismatch (serious).
+              aria-label={`${shareLabel} — 复制当前视图的链接`}
               // z-30 + a solid background: the scrub thumbnail popup
               // floats above the bar at z-20 and would otherwise sit
               // on top of this button.
               className="relative z-30 inline-flex min-h-[28px] items-center gap-1 rounded-full border border-black/20 bg-white/90 px-2 text-[10px] tracking-normal backdrop-blur-sm transition hover:bg-black/5 dark:border-white/20 dark:bg-black/80 dark:hover:bg-white/10"
             >
-              {shareState === 'copied'
-                ? '✓ 已复制'
-                : shareState === 'manual'
-                  ? '📋 请手动复制'
-                  : '🔗 分享'}
+              {shareLabel}
             </button>
           )}
         </div>

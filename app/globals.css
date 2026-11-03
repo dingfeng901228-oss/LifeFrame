@@ -116,3 +116,28 @@ canvas:focus-visible,
 svg:focus-visible {
   outline: none;
 }
+
+
+/* Frank #7243 round-5: entrance animation for the Places panel.
+   Kept under 150 ms so it reads as a pop, not a transition, and
+   disabled entirely when the user asked for reduced motion. */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

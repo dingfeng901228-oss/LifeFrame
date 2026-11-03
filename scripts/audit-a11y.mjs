@@ -46,7 +46,10 @@ for (const route of ROUTES) {
       await page.waitForTimeout(300);
     }
     const results = await new AxeBuilder({ page })
-      .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'best-practice'])
+      // wcag21a matters: label-content-name-mismatch (WCAG 2.5.3
+      // Label in Name) is tagged wcag21a and was silently skipped
+      // when this list omitted it.
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice'])
       .analyze();
     allResults.push({
       route: route.path,

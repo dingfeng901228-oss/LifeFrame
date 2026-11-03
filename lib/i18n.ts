@@ -157,6 +157,27 @@ const dict: Dict = {
     zh: '今天',
     ja: '今日',
   },
+  // Frank #7243 round-5: the Places-layer panel.
+  'place.unknown': {
+    zh: '这个位置',
+    ja: 'この場所',
+  },
+  'place.count': {
+    zh: '{count} 张照片',
+    ja: '{count} 枚の写真',
+  },
+  'place.viewAll': {
+    zh: '查看全部 {count} 张',
+    ja: '{count} 枚すべて見る',
+  },
+  'place.close': {
+    zh: '关闭地点面板',
+    ja: '場所パネルを閉じる',
+  },
+  'place.photoAria': {
+    zh: '打开照片：{name}',
+    ja: '写真を開く：{name}',
+  },
   'onThisDay.all': {
     zh: '查看全部',
     ja: 'すべて見る',
