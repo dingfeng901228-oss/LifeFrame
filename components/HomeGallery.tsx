@@ -343,7 +343,7 @@ export function HomeGallery({ locale }: { locale: Locale }) {
             onClusterClick={handleClusterClick}
           />
           <div className="pointer-events-none absolute inset-x-0 top-0 z-10 px-4 pt-4 pb-2 text-center">
-            <p className="text-xs tracking-[0.4em] text-black/70 dark:text-white/70 uppercase">
+            <p className="text-xs tracking-[0.4em] text-black/70 uppercase drop-shadow-sm dark:text-white/70">
               {t(locale, 'hero.japaneseSubtitle')}
             </p>
             <h1 className="mt-2 text-2xl font-light leading-snug text-black drop-shadow-sm dark:text-white sm:text-3xl">
@@ -464,7 +464,7 @@ export function HomeGallery({ locale }: { locale: Locale }) {
             — this was the iPad / narrow-desktop bug where the
             enlarged earth drew over the title. */}
         <div className="relative z-10 flex-shrink-0 px-6 pt-6 pb-3 text-center">
-                  <p className="text-[11px] tracking-[0.4em] text-black/70 dark:text-white/70 uppercase">
+                  <p className="text-[11px] tracking-[0.4em] text-black/70 uppercase drop-shadow-sm dark:text-white/70">
                     {t(locale, 'hero.japaneseSubtitle')}
                   </p>
                   <h1 className="mt-2 text-2xl font-light text-black dark:text-white sm:text-3xl lg:text-4xl">
