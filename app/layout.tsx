@@ -127,7 +127,16 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang={locale === 'ja' ? 'ja' : 'zh-Hans'}>
       <head>
-        <link rel="apple-touch-icon" href="/icon-192.png" />
+        {/* Frank #7243 round-2: point the apple-touch-icon at the
+            dedicated 180×180 opaque PNG. iOS renders a transparent
+            PNG on a black backing plate, which made the globe logo
+            look like it had a black square around it. */}
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        {/* Classic .ico for legacy browsers that ignore the SVG
+            icons (and for the browser-tab 16×16 render, which is
+            crisper from a dedicated 32×32 asset than from a
+            downscaled 192 PNG). */}
+        <link rel="icon" href="/favicon.ico" sizes="32x32" />
         {/* Frank #0906 round-14 cont.: iOS PWA polish — these
             <meta> tags aren't required for Chrome / Edge install
             prompts but they make the iOS Add-to-Home-Screen

@@ -23,6 +23,10 @@ export function HomeGallery({ locale }: { locale: Locale }) {
   const [photos, setPhotos] = useState<PhotoRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  // Frank #7243 round-2: bumping this re-runs the gallery fetch.
+  // Used by the "重试" button on the failure notice so a visitor
+  // doesn't have to know how to hard-refresh the page.
+  const [reloadToken, setReloadToken] = useState(0);
   const [selected, setSelected] = useState<PhotoRow | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   // Frank #7509: cluster browsing now flows through the unified
@@ -92,7 +96,9 @@ export function HomeGallery({ locale }: { locale: Locale }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+    // Frank #7243 round-2: reloadToken lets the retry button
+    // re-run this fetch without a page reload.
+  }, [reloadToken]);
 
   // ESC cascades through modals — top-most closes first.
   // The PhotoViewer handles its own ESC internally (closes
@@ -369,6 +375,10 @@ export function HomeGallery({ locale }: { locale: Locale }) {
               <div className="flex justify-center pb-1">
                 <Link
                   href="/upload"
+                  // Frank #7243 round-2: /upload redirects anonymous
+                  // visitors to /login, so prefetching its RSC
+                  // payload is a wasted 1.5 s round-trip.
+                  prefetch={false}
                   className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-cyan-500 px-5 text-sm font-medium text-white shadow-sm transition hover:bg-cyan-400"
                 >
                   {t(locale, 'hero.cta.start')}
@@ -459,12 +469,14 @@ export function HomeGallery({ locale }: { locale: Locale }) {
             <div className="mt-5 flex items-center justify-center gap-3">
               <Link
                 href="/upload"
+                prefetch={false}
                 className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-cyan-500 px-5 text-sm font-medium text-white shadow-sm transition hover:bg-cyan-400"
               >
                 {t(locale, 'hero.cta.primary')}
               </Link>
               <Link
                 href="/welcome"
+                prefetch={false}
                 className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-black/15 px-5 text-sm text-black/80 transition hover:bg-black/5 dark:border-white/20 dark:text-white/80 dark:hover:bg-white/5"
               >
                 {t(locale, 'hero.cta.secondary')}
@@ -540,13 +552,60 @@ export function HomeGallery({ locale }: { locale: Locale }) {
             </div>
           </div>
           {fetchError && (
-            <p className="mx-auto max-w-4xl px-6 pb-3 text-xs text-rose-700 dark:text-rose-300/90">
-              ⚠ 加载照片失败：{fetchError}
-              <br />
-              <span className="text-black/40 dark:text-white/40">
-                检查 Supabase URL/anon key 是否在 Vercel Environment Variables 配齐。
+            <div
+              role="status"
+              aria-live="polite"
+              className="mx-auto mb-3 flex max-w-4xl items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/[0.06] px-4 py-3 text-sm"
+            >
+              <span aria-hidden="true" className="mt-0.5 text-base leading-none">
+                ⚠️
               </span>
-            </p>
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-black dark:text-white">
+                  {t(locale, 'gallery.error.title')}
+                </p>
+                <p className="mt-1 text-xs text-black/60 dark:text-white/60">
+                  {t(locale, 'gallery.error.hint')}
+                </p>
+                {/* The raw error text stays available for debugging
+                    but is visually de-emphasised and wrapped in a
+                    <details> so it doesn't dominate the notice.
+                    Frank #7243 round-2: the previous UI printed
+                    "TypeError: Failed to fetch" + "检查 Supabase
+                    URL/anon key 是否在 Vercel Environment Variables
+                    配齐。" straight to every visitor, which leaked
+                    infra detail and made the site look broken. */}
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-[11px] text-black/40 hover:text-black/60 dark:text-white/40 dark:hover:text-white/60">
+                    详细信息
+                  </summary>
+                  <code className="mt-1 block break-all text-[11px] text-black/50 dark:text-white/50">
+                    {fetchError}
+                  </code>
+                </details>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFetchError(null);
+                    setLoading(true);
+                    setReloadToken((n) => n + 1);
+                  }}
+                  className="min-h-[36px] rounded-full border border-amber-500/40 px-3 text-xs font-medium text-amber-700 transition hover:bg-amber-500/10 dark:text-amber-300"
+                >
+                  {t(locale, 'gallery.error.retry')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFetchError(null)}
+                  aria-label={t(locale, 'gallery.error.dismiss')}
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-black/40 transition hover:bg-black/5 hover:text-black dark:text-white/40 dark:hover:bg-white/5 dark:hover:text-white"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
           )}
         </div>
 

@@ -88,6 +88,9 @@ export function WelcomeBanner({ locale }: { locale: Locale }) {
           {t(locale, 'welcome.messageShort')}
         </span>
       </p>
+      {/* Plain <a> (not Next <Link>) — a full page load here is
+          intentional: the banner has a dismiss() side effect that
+          would need to survive the navigation anyway. */}
       <a
         href="/login"
         onClick={dismiss}

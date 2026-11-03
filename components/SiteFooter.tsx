@@ -74,6 +74,7 @@ export function SiteFooter({ locale }: { locale: Locale }) {
               <li>
                 <Link
                   href="/welcome"
+                  prefetch={false}
                   className="text-black/70 transition hover:text-black dark:text-white/70 dark:hover:text-white"
                 >
                   {t(locale, 'footer.productIntro')}

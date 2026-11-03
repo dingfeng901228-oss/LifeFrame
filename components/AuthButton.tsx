@@ -205,6 +205,11 @@ export function AuthButton() {
     return (
       <Link
         href="/login"
+        // Frank #7243 round-2: /login is auth-gated; Next's Link
+        // auto-prefetch fires an RSC fetch that redirects to
+        // /login?next=... and returns nothing useful. It cost
+        // 1.2 s of bandwidth on the homepage for no benefit.
+        prefetch={false}
         className="rounded-full border border-black/15 px-4 py-1 text-xs text-black transition hover:border-black/40 hover:bg-black/5 dark:border-white/30 dark:text-white dark:hover:border-white/60 dark:hover:bg-white/5"
       >
         {t(locale, 'auth.login')}

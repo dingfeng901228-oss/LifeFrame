@@ -49,7 +49,28 @@ const dict: Dict = {
   },
   'hero.subtitle.empty': {
     zh: '首页 3D 地球仪 — 上传第一张照片点亮地点',
-    ja: '3D 地球儀 — 最初の写真をアップロードして地点を灯す',
+    ja: 'ホーム 3D 地球儀 — 最初の写真をアップロードして地点を灯そう',
+  },
+  // Frank #7243 round-2: gallery load-failure UX. The raw
+  // "TypeError: Failed to fetch" + a dev hint about Supabase env
+  // vars was shown verbatim to every visitor — it leaked
+  // infrastructure detail and looked like a broken site. Now a
+  // localized, dismissible notice with a retry action.
+  'gallery.error.title': {
+    zh: '暂时无法加载照片',
+    ja: '一時的に写真を読み込めませんでした',
+  },
+  'gallery.error.hint': {
+    zh: '可能是网络波动或数据服务暂时不可用，稍后刷新即可恢复。',
+    ja: 'ネットワークの変動かデータサービスの一時停止の可能性があります。少し待ってから再読み込みしてください。',
+  },
+  'gallery.error.retry': {
+    zh: '重试',
+    ja: '再試行',
+  },
+  'gallery.error.dismiss': {
+    zh: '关闭',
+    ja: '閉じる',
   },
   // {count} placeholder — replaced at call site via t(locale, key, { count: n }).
   'hero.subtitle.countNoFilter': {
