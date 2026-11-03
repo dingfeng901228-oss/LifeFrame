@@ -9,12 +9,21 @@ import { writeFileSync } from 'node:fs';
 // Default to the production deployment; LF_BASE overrides it (use
 // it to audit a local production build).
 const BASE = process.env.LF_BASE || 'https://lifeframe.frank2025.com';
-const ROUTES = [
+const ALL_ROUTES = [
   { path: '/', label: 'home' },
   { path: '/welcome', label: 'welcome' },
   { path: '/stats', label: 'stats' },
   { path: '/login', label: 'login' },
 ];
+
+// LH_ROUTES=home,stats  → only those routes
+// LH_FORMS=mobile       → only that form factor
+// Focused runs matter on a busy machine: a full 8-run sweep has
+// enough run-to-run variance that a single score is not evidence.
+const ROUTES = process.env.LH_ROUTES
+  ? ALL_ROUTES.filter((r) => process.env.LH_ROUTES.split(',').includes(r.label))
+  : ALL_ROUTES;
+const FORMS = process.env.LH_FORMS ? process.env.LH_FORMS.split(',') : ['desktop', 'mobile'];
 
 // Lighthouse needs a CDP-compatible browser, but we can
 // also use the chrome-launcher to spawn chrome directly.
@@ -28,7 +37,7 @@ const browser = await chromium.launch({
 const results = [];
 
 for (const route of ROUTES) {
-  for (const formFactor of ['desktop', 'mobile']) {
+  for (const formFactor of FORMS) {
     const config = formFactor === 'mobile'
       ? { extends: 'lighthouse:default', settings: { formFactor: 'mobile', screenEmulation: { mobile: true, width: 412, height: 823, deviceScaleFactor: 1.75, disabled: false }, throttlingMethod: 'simulate', throttling: { rttMs: 150, throughputKbps: 1638.4, cpuSlowdownMultiplier: 4, requestLatencyMs: 0, downloadThroughputKbps: 0, uploadThroughputKbps: 0 } } }
       : { extends: 'lighthouse:default', settings: { formFactor: 'desktop', screenEmulation: { mobile: false, width: 1350, height: 940, deviceScaleFactor: 1, disabled: false }, throttling: { rttMs: 40, throughputKbps: 10240, cpuSlowdownMultiplier: 1, requestLatencyMs: 0, downloadThroughputKbps: 0, uploadThroughputKbps: 0 } } };

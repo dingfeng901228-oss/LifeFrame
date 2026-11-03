@@ -542,23 +542,7 @@ export function HomeGallery({ locale }: { locale: Locale }) {
         </div>
 
 
-            {/* Frank #7243 round-4: the "On This Day" card, borrowed
-                from OldMapsOnline / TimeMap (their daily time
-                machine). The photos are already computed in
-                `onThisDayGrouped` — they used to be reachable only
-                through a button + modal. Now they are on screen. */}
-            {memoryCard && (
-              <OnThisDayCard
-                groups={memoryCard.groups}
-                locale={locale}
-                mode={memoryCard.mode}
-                month={memoryCard.month}
-                day={memoryCard.day}
-                daysAgo={memoryCard.daysAgo}
-                onOpenAll={() => setOnThisDayOpen(true)}
-                onPick={(p) => setSelected(p)}
-              />
-            )}
+
 
         {/* Timeline at the bottom of the mobile stack. */}
         <div className="pointer-events-auto flex-shrink-0">
@@ -571,6 +555,31 @@ export function HomeGallery({ locale }: { locale: Locale }) {
             shareState={shareState}
           />
         </div>
+
+            {/* Frank #7243 round-4: the "On This Day" card, borrowed
+                from OldMapsOnline / TimeMap (their daily time
+                machine). The photos are already computed in
+                `onThisDayGrouped` — they used to be reachable only
+                through a button + modal. Now they are on screen.
+
+                It sits AFTER the Timeline on purpose: the card
+                appears only once the client-side photo fetch
+                resolves, and inserting it ABOVE the Timeline pushed
+                the Timeline down — a real CLS (0.12) on mobile.
+                Content inserted below the visible area moves
+                nothing that is already on screen. */}
+            {memoryCard && (
+              <OnThisDayCard
+                groups={memoryCard.groups}
+                locale={locale}
+                mode={memoryCard.mode}
+                month={memoryCard.month}
+                day={memoryCard.day}
+                daysAgo={memoryCard.daysAgo}
+                onOpenAll={() => setOnThisDayOpen(true)}
+                onPick={(p) => setSelected(p)}
+              />
+            )}
       </div>
 
       {/* Frank #7243 Task 4: wrap the existing absolute-overlay
@@ -723,11 +732,6 @@ export function HomeGallery({ locale }: { locale: Locale }) {
             </div>
           </div>
 
-            {/* Frank #7243 round-4: the "On This Day" card, borrowed
-                from OldMapsOnline / TimeMap (their daily time
-                machine). The photos are already computed in
-                `onThisDayGrouped` — they used to be reachable only
-                through a button + modal. Now they are on screen. */}
           {fetchError && (
             <div
               role="status"
