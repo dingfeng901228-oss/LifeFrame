@@ -28,6 +28,16 @@ const STORAGE_KEY = 'lifeframe-welcome-dismissed';
  *     UX tutorial, not a security boundary; localStorage is the
  *     right scope.
  */
+/**
+ * Frank #7243 round-2: this was `fixed top-[65px]`, i.e. a
+ * floating strip that overlaid the page. On mobile it covered the
+ * hero's eyebrow line and the top half of the H1 (the hero text
+ * block starts at the very top of the globe stage, which begins
+ * right below the 65 px header). Making it a normal in-flow
+ * element lets it push the content down instead — and it scrolls
+ * away with the page rather than permanently occupying the top
+ * of the viewport.
+ */
 export function WelcomeBanner({ locale }: { locale: Locale }) {
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -75,7 +85,7 @@ export function WelcomeBanner({ locale }: { locale: Locale }) {
     <div
       role="region"
       aria-label={t(locale, 'welcome.aria')}
-      className="fixed inset-x-0 top-[65px] z-30 flex items-center justify-center gap-2 border-b border-cyan-500/30 bg-white/85 px-4 py-2 text-sm text-black/80 shadow-sm backdrop-blur dark:border-cyan-400/20 dark:bg-black/70 dark:text-white/85 sm:gap-4"
+      className="relative z-30 flex items-center justify-center gap-2 border-b border-cyan-500/30 bg-white/85 px-4 py-2 text-sm text-black/80 shadow-sm backdrop-blur dark:border-cyan-400/20 dark:bg-black/70 dark:text-white/85 sm:gap-4"
     >
       <span aria-hidden="true" className="text-base">
         🌍

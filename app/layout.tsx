@@ -201,6 +201,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <AuthButton />
           </nav>
         </header>
+        {/* Frank #7243 round-2: the welcome banner is an in-flow
+            element, so it has to come BEFORE the page content —
+            otherwise it renders after {children} and, being
+            positioned at the top of the viewport, covers the hero
+            text instead of pushing it down. */}
+        <WelcomeBanner locale={locale} />
         {/* Children render their own <main> so each page can
             set its own max-width / padding without forcing the
             layout's <main> to wrap them. (axe-core flagged
@@ -217,7 +223,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             signed-in users (deferring to OnboardingFlow which
             has the richer 3-step tutorial for them) and for
             visitors who have already dismissed it once. */}
-        <WelcomeBanner locale={locale} />
         <OnboardingFlow locale={locale} />
       </body>
     </html>
