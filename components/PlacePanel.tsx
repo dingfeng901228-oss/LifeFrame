@@ -27,6 +27,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { t, type Locale } from '@/lib/i18n';
 import { photoImageUrl } from '@/lib/photo-url';
+import { matchContemporaries } from '@/lib/search';
 import type { PhotoRow } from '@/components/PhotoViewer';
 
 type Props = {
@@ -41,6 +42,13 @@ type Props = {
   onOpenAll: (photos: PhotoRow[]) => void;
   /** Open the full-screen viewer at one specific photo. */
   onOpenPhoto: (photos: PhotoRow[], photo: PhotoRow) => void;
+  /**
+   * The WHOLE archive — used to find the other places you were in
+   * around the same time (TimeMap's "Unlock the Entire Story").
+   */
+  allPhotos: PhotoRow[];
+  /** Jump to another place from the contemporaries list. */
+  onOpenPlace: (photos: PhotoRow[]) => void;
 };
 
 /**
@@ -59,7 +67,15 @@ function formatDay(d: Date | null): string {
   ).padStart(2, '0')}`;
 }
 
-export function PlacePanel({ photos, locale, onClose, onOpenAll, onOpenPhoto }: Props) {
+export function PlacePanel({
+  photos,
+  locale,
+  onClose,
+  onOpenAll,
+  onOpenPhoto,
+  allPhotos,
+  onOpenPlace,
+}: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
 
   // Move focus into the panel so keyboard users land on it (and so
@@ -98,6 +114,15 @@ export function PlacePanel({ photos, locale, onClose, onOpenAll, onOpenPhoto }: 
       sorted: withDates.map((x) => x.p),
     };
   }, [photos]);
+
+  // Frank #7243 round-6: the other places you were in around the
+  // same time. TimeMap calls this "Unlock the Entire Story" — the
+  // rulers, conflicts and contemporaries of the period you picked.
+  // Here the contemporaries are the other places on your map.
+  const contemporaries = useMemo(
+    () => matchContemporaries(allPhotos, photos, 45),
+    [allPhotos, photos],
+  );
 
   if (photos.length === 0) return null;
 
@@ -169,6 +194,50 @@ export function PlacePanel({ photos, locale, onClose, onOpenAll, onOpenPhoto }: 
       >
         {t(locale, 'place.viewAll', { count })} ›
       </button>
+
+      {/* ── Contemporaries: the other places of that period ── */}
+      {contemporaries.length > 0 && (
+        <div className="mt-2 border-t border-black/10 pt-2 dark:border-white/10">
+          <div className="mb-1 flex items-baseline justify-between gap-2">
+            <h3 className="text-[11px] font-medium text-black/75 dark:text-white/75">
+              🕰 {t(locale, 'place.contemporaries')}
+            </h3>
+            <span className="text-[10px] text-black/45 dark:text-white/45">
+              {t(locale, 'place.contemporariesHint')}
+            </span>
+          </div>
+          <ul className="space-y-0.5">
+            {contemporaries.map((c) => (
+              <li key={c.name}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const at = allPhotos.filter(
+                      (p) => p.location_name?.trim() === c.name,
+                    );
+                    if (at.length > 0) onOpenPlace(at);
+                  }}
+                  // No aria-label on purpose: the visible text IS the
+                  // accessible name, which satisfies WCAG 2.5.3 Label
+                  // in Name. An aria-label that paraphrased the place
+                  // (and dropped the photo count) tripped
+                  // label-content-name-mismatch.
+                  title={t(locale, 'place.contemporaryAria', { name: c.name })}
+                  className="flex w-full items-center gap-2 rounded-lg px-1.5 py-1.5 text-left transition hover:bg-black/5 dark:hover:bg-white/10"
+                >
+                  <span className="text-xs">📍</span>
+                  <span className="min-w-0 flex-1 truncate text-xs text-black/80 dark:text-white/80">
+                    {c.name}
+                  </span>
+                  <span className="shrink-0 text-[10px] tabular-nums text-black/50 dark:text-white/50">
+                    {t(locale, 'search.placeHit', { count: c.count })}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

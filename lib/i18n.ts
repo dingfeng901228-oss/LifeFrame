@@ -174,9 +174,81 @@ const dict: Dict = {
     zh: '关闭地点面板',
     ja: '場所パネルを閉じる',
   },
+  // Frank #7243 round-6: "Unlock the Entire Story" — the other
+  // places you were in around the same time.
+  'place.contemporaries': {
+    zh: '同一时期你还在',
+    ja: '同じ時期の滞在先',
+  },
+  'place.contemporariesHint': {
+    zh: '前后 45 天内去过的地方',
+    ja: '前後 45 日間にいた場所',
+  },
+  'place.contemporaryAria': {
+    zh: '查看同一时期的 {name}',
+    ja: '同じ時期の {name} を見る',
+  },
   'place.photoAria': {
     zh: '打开照片：{name}',
     ja: '写真を開く：{name}',
+  },
+  // Frank #7243 round-6: unified search result groups.
+  'search.groupPhotos': {
+    zh: '📷 照片',
+    ja: '📷 写真',
+  },
+  'search.groupPlaces': {
+    zh: '📍 地点',
+    ja: '📍 場所',
+  },
+  'search.groupTimes': {
+    zh: '📅 时间',
+    ja: '📅 時期',
+  },
+  'search.placeHit': {
+    zh: '{count} 张照片',
+    ja: '{count} 枚の写真',
+  },
+  'search.timeHit': {
+    zh: '{count} 张照片',
+    ja: '{count} 枚の写真',
+  },
+  'search.jumpTo': {
+    zh: '跳到',
+    ja: '移動',
+  },
+  // Frank #7243 round-6: PWA install prompt.
+  'pwa.install': {
+    zh: '安装到主屏幕',
+    ja: 'ホーム画面に追加',
+  },
+  'pwa.hint': {
+    zh: '添加到主屏幕，离线也能用，启动更快。',
+    ja: 'ホーム画面に追加すると、オフラインでも使えて起動も速くなります。',
+  },
+  'pwa.iosHint': {
+    zh: 'iOS 上需要手动添加：',
+    ja: 'iOS では手動で追加します：',
+  },
+  'pwa.iosStep1': {
+    zh: '点底部工具栏的「分享」按钮',
+    ja: '下部ツールバーの「共有」ボタンをタップ',
+  },
+  'pwa.iosStep2': {
+    zh: '选择「添加到主屏幕」',
+    ja: '「ホーム画面に追加」を選択',
+  },
+  'pwa.iosStep3': {
+    zh: '点右上角「添加」',
+    ja: '右上の「追加」をタップ',
+  },
+  'pwa.notNow': {
+    zh: '暂不',
+    ja: 'あとで',
+  },
+  'pwa.close': {
+    zh: '关闭',
+    ja: '閉じる',
   },
   'onThisDay.all': {
     zh: '查看全部',

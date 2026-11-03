@@ -10,6 +10,7 @@ import { PhotoViewer, type PhotoRow } from '@/components/PhotoViewer';
 import { copyText, useUrlViewState } from '@/lib/use-view-state';
 import { OnThisDayCard } from '@/components/OnThisDayCard';
 import { PlacePanel } from '@/components/PlacePanel';
+import { matchPlaces, matchTimes } from '@/lib/search';
 import { SearchBox } from '@/components/SearchBox';
 import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
 import { photoImageUrl } from '@/lib/photo-url';
@@ -241,6 +242,17 @@ export function HomeGallery({ locale }: { locale: Locale }) {
     });
   }, [photos, trimmedQuery]);
 
+  // Frank #7243 round-6: unified search hits. One query, three
+  // kinds of answer — photos (below), places and moments.
+  const placeHits = useMemo(
+    () => matchPlaces(photos, trimmedQuery),
+    [photos, trimmedQuery],
+  );
+  const timeHits = useMemo(
+    () => matchTimes(photos, trimmedQuery),
+    [photos, trimmedQuery],
+  );
+
   // Photos with GPS coords that also fall inside the selected date window
   // (if any). Empty selection = all photos. This is what drives the
   // globe markers — index-aligned with `markers` for the click handler.
@@ -306,6 +318,28 @@ export function HomeGallery({ locale }: { locale: Locale }) {
     setPlacePhotos([]);
     setSelected(at);
   }, []);
+
+  // Frank #7243 round-6: picking a place from the unified search
+  // opens the same Places panel a globe marker opens — one
+  // interaction model for "go to this place".
+  const handlePickPlace = useCallback(
+    (name: string) => {
+      const at = photos.filter((p) => p.location_name?.trim() === name);
+      if (at.length === 0) return;
+      setPlacePhotos(at);
+      setSearchQuery('');
+    },
+    [photos, setSearchQuery],
+  );
+
+  // Picking a moment drives the timeline to that date.
+  const handlePickTime = useCallback(
+    (date: Date) => {
+      setSelectedDate(date);
+      setSearchQuery('');
+    },
+    [setSearchQuery],
+  );
 
   const visibleCount = visiblePhotos.length;
 
@@ -520,6 +554,8 @@ export function HomeGallery({ locale }: { locale: Locale }) {
                 onClose={() => setPlacePhotos([])}
                 onOpenAll={(photos) => openPlaceInViewer(photos, photos[0])}
                 onOpenPhoto={(photos, photo) => openPlaceInViewer(photos, photo)}
+                allPhotos={photos}
+                onOpenPlace={(next) => setPlacePhotos(next)}
               />
             </div>
           )}
@@ -544,6 +580,10 @@ export function HomeGallery({ locale }: { locale: Locale }) {
                 matches={filteredPhotos}
                 total={photos.length}
                 onPickMatch={(p) => setSelected(p)}
+                placeHits={placeHits}
+                timeHits={timeHits}
+                onPickPlace={handlePickPlace}
+                onPickTime={handlePickTime}
               />
             )}
             {/* Frank #7243 Task 5: 移动端显示一个醒目的「开始记录」CTA，
@@ -729,6 +769,8 @@ export function HomeGallery({ locale }: { locale: Locale }) {
                 onClose={() => setPlacePhotos([])}
                 onOpenAll={(photos) => openPlaceInViewer(photos, photos[0])}
                 onOpenPhoto={(photos, photo) => openPlaceInViewer(photos, photo)}
+                allPhotos={photos}
+                onOpenPlace={(next) => setPlacePhotos(next)}
               />
             </div>
           )}
@@ -749,6 +791,10 @@ export function HomeGallery({ locale }: { locale: Locale }) {
                 matches={filteredPhotos}
                 total={photos.length}
                 onPickMatch={(p) => setSelected(p)}
+                placeHits={placeHits}
+                timeHits={timeHits}
+                onPickPlace={handlePickPlace}
+                onPickTime={handlePickTime}
               />
             )}
             <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-end">

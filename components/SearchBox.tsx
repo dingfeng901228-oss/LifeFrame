@@ -3,6 +3,8 @@
 import { useEffect, useId, useRef } from 'react';
 import { t, type Locale } from '@/lib/i18n';
 import type { PhotoRow } from '@/components/PhotoViewer';
+import type { PlaceHit, TimeHit } from '@/lib/search';
+import { photoImageUrl } from '@/lib/photo-url';
 
 /**
  * Frank #0906 round-13 (P1 #6): search input with live
@@ -22,9 +24,23 @@ type Props = {
   matches: PhotoRow[];
   total: number;
   onPickMatch: (photo: PhotoRow) => void;
+  /**
+   * Frank #7243 round-6: unified search. OldMapsOnline's Dec 2025
+   * search release returns every entity type from ONE query
+   * instead of one search per type. A photo archive has three
+   * axes, so the dropdown now groups: photos / places / times.
+   */
+  placeHits?: PlaceHit[];
+  timeHits?: TimeHit[];
+  /** Jump to a place — opens the Places panel for that location. */
+  onPickPlace?: (name: string) => void;
+  /** Jump to a moment — drives the timeline to that date. */
+  onPickTime?: (date: Date) => void;
 };
 
 const PREVIEW_LIMIT = 6;
+const PLACE_LIMIT = 6;
+const TIME_LIMIT = 4;
 
 export function SearchBox({
   locale,
@@ -33,6 +49,10 @@ export function SearchBox({
   matches,
   total,
   onPickMatch,
+  placeHits = [],
+  timeHits = [],
+  onPickPlace,
+  onPickTime,
 }: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const dropdownId = useId();
@@ -122,19 +142,26 @@ export function SearchBox({
         )}
       </div>
 
-      {/* Result preview dropdown */}
+      {/* Result dropdown — grouped by type.
+          Frank #7243 round-6: one query, three kinds of hit
+          (photos / places / times), the way TimeMap's unified
+          historical search returns battles, regions and people
+          together instead of one search box per type. */}
       {showDropdown && (
         <div
           id={dropdownId}
           role="listbox"
           aria-label={t(locale, 'search.resultsLabel')}
-          className="absolute left-0 right-0 top-full z-20 mt-2 max-h-80 overflow-auto rounded-xl border border-black/10 bg-white/95 p-2 shadow-xl backdrop-blur-md dark:border-white/15 dark:bg-black/90"
+          // Opens UPWARD: the search box lives in the bottom
+          // control panel, so a downward dropdown falls off the
+          // bottom of the viewport (it always did — the panel is
+          // anchored to the bottom on desktop and mobile).
+          className="absolute bottom-full left-0 right-0 z-20 mb-2 max-h-[min(28rem,70vh)] overflow-auto rounded-xl border border-black/10 bg-white/95 p-2 shadow-xl backdrop-blur-md dark:border-white/15 dark:bg-black/90"
         >
-          {matches.length === 0 ? (
+          {matches.length === 0 && placeHits.length === 0 && timeHits.length === 0 ? (
             <div className="px-3 py-6 text-center text-sm text-black/70 dark:text-white/70">
               <p className="mb-2">
-                🔍{' '}
-                {t(locale, 'search.noResults', { query: trimmed })}
+                🔍 {t(locale, 'search.noResults', { query: trimmed })}
               </p>
               <button
                 type="button"
@@ -146,64 +173,131 @@ export function SearchBox({
             </div>
           ) : (
             <>
-              <div className="px-2 pb-1 text-[11px] uppercase tracking-wider text-black/70 dark:text-white/70">
-                {t(locale, 'search.resultsLabel')} ·{' '}
-                {matches.length <= PREVIEW_LIMIT
-                  ? matches.length
-                  : `${PREVIEW_LIMIT}+`}
-              </div>
-              <ul className="space-y-1">
-                {matches.slice(0, PREVIEW_LIMIT).map((m) => {
-                  const takenAt = (m.taken_at ?? m.created_at ?? '').slice(
-                    0,
-                    10,
-                  );
-                  return (
-                    <li key={m.id}>
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected="false"
-                        onClick={() => onPickMatch(m)}
-                        className="flex w-full items-center gap-3 rounded-lg p-2 text-left transition hover:bg-black/5 dark:hover:bg-white/10"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={
-                            m.thumbnail_url ||
-                            m.public_url ||
-                            '/placeholder.png'
-                          }
-                          alt=""
-                          loading="lazy"
-                          width={48}
-                          height={48}
-                          className="h-12 w-12 flex-shrink-0 rounded object-cover ring-1 ring-black/5 dark:ring-white/10"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm text-black dark:text-white">
-                            {m.filename || m.key}
-                          </div>
-                          <div className="flex items-center gap-2 text-[11px] text-black/50 dark:text-white/50">
-                            {takenAt && <span>📅 {takenAt}</span>}
-                            {m.location_name && (
-                              <span className="truncate">
-                                📍 {m.location_name}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-              {matches.length > PREVIEW_LIMIT && (
-                <div className="border-t border-black/5 px-2 pt-2 text-[11px] text-black/60 dark:border-white/10 dark:text-white/60">
-                  {t(locale, 'search.moreHint', {
-                    count: matches.length - PREVIEW_LIMIT,
-                  })}
-                </div>
+              {/* ── Photos ── */}
+              {matches.length > 0 && (
+                <section aria-label={t(locale, 'search.groupPhotos')}>
+                  <div className="px-2 pb-1 text-[11px] uppercase tracking-wider text-black/70 dark:text-white/70">
+                    {t(locale, 'search.groupPhotos')} ·{' '}
+                    {matches.length <= PREVIEW_LIMIT
+                      ? matches.length
+                      : `${PREVIEW_LIMIT}+`}
+                  </div>
+                  <ul className="space-y-1">
+                    {matches.slice(0, PREVIEW_LIMIT).map((m) => {
+                      const takenAt = (m.taken_at ?? m.created_at ?? '').slice(
+                        0,
+                        10,
+                      );
+                      return (
+                        <li key={m.id}>
+                          <button
+                            type="button"
+                            role="option"
+                            aria-selected="false"
+                            onClick={() => onPickMatch(m)}
+                            className="flex w-full items-center gap-3 rounded-lg p-2 text-left transition hover:bg-black/5 dark:hover:bg-white/10"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={photoImageUrl(m, '256')}
+                              alt=""
+                              loading="lazy"
+                              width={48}
+                              height={48}
+                              className="h-12 w-12 flex-shrink-0 rounded object-cover ring-1 ring-black/5 dark:ring-white/10"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-sm text-black dark:text-white">
+                                {m.filename || m.key}
+                              </div>
+                              <div className="flex items-center gap-2 text-[11px] text-black/50 dark:text-white/50">
+                                {takenAt && <span>📅 {takenAt}</span>}
+                                {m.location_name && (
+                                  <span className="truncate">
+                                    📍 {m.location_name}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {matches.length > PREVIEW_LIMIT && (
+                    <div className="border-t border-black/5 px-2 pt-2 text-[11px] text-black/60 dark:border-white/10 dark:text-white/60">
+                      {t(locale, 'search.moreHint', {
+                        count: matches.length - PREVIEW_LIMIT,
+                      })}
+                    </div>
+                  )}
+                </section>
+              )}
+
+              {/* ── Places ── */}
+              {placeHits.length > 0 && onPickPlace && (
+                <section
+                  aria-label={t(locale, 'search.groupPlaces')}
+                  className="mt-2 border-t border-black/5 pt-2 dark:border-white/10"
+                >
+                  <div className="px-2 pb-1 text-[11px] uppercase tracking-wider text-black/70 dark:text-white/70">
+                    {t(locale, 'search.groupPlaces')} · {placeHits.length}
+                  </div>
+                  <ul className="space-y-0.5">
+                    {placeHits.slice(0, PLACE_LIMIT).map((h) => (
+                      <li key={h.name}>
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected="false"
+                          onClick={() => onPickPlace(h.name)}
+                          className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition hover:bg-black/5 dark:hover:bg-white/10"
+                        >
+                          <span className="text-sm">📍</span>
+                          <span className="min-w-0 flex-1 truncate text-sm text-black dark:text-white">
+                            {h.name}
+                          </span>
+                          <span className="shrink-0 text-[11px] tabular-nums text-black/55 dark:text-white/55">
+                            {t(locale, 'search.placeHit', { count: h.count })}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+
+              {/* ── Times ── */}
+              {timeHits.length > 0 && onPickTime && (
+                <section
+                  aria-label={t(locale, 'search.groupTimes')}
+                  className="mt-2 border-t border-black/5 pt-2 dark:border-white/10"
+                >
+                  <div className="px-2 pb-1 text-[11px] uppercase tracking-wider text-black/70 dark:text-white/70">
+                    {t(locale, 'search.groupTimes')} · {timeHits.length}
+                  </div>
+                  <ul className="space-y-0.5">
+                    {timeHits.slice(0, TIME_LIMIT).map((h) => (
+                      <li key={`${h.kind}-${h.label}`}>
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected="false"
+                          onClick={() => onPickTime(h.date)}
+                          className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition hover:bg-black/5 dark:hover:bg-white/10"
+                        >
+                          <span className="text-sm">📅</span>
+                          <span className="min-w-0 flex-1 truncate text-sm text-black dark:text-white">
+                            {t(locale, 'search.jumpTo')} {h.label}
+                          </span>
+                          <span className="shrink-0 text-[11px] tabular-nums text-black/55 dark:text-white/55">
+                            {t(locale, 'search.timeHit', { count: h.count })}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
               )}
             </>
           )}
