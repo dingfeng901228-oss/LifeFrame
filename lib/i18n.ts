@@ -129,6 +129,46 @@ const dict: Dict = {
     zh: '📅 历史上这一天',
     ja: '📅 历史上的この日',
   },
+  // Frank #7243 round-4: the "On This Day" card. OldMapsOnline made
+  // this a headline feature ("a daily time machine"); LifeFrame had
+  // the data but kept it behind a modal. These strings drive the
+  // inline card that shows the day's photos without any click.
+  'onThisDay.title': {
+    zh: '历史上的今天',
+    ja: '历史上的この日',
+  },
+  'onThisDay.date': {
+    zh: '{month}月{day}日',
+    ja: '{month}月{day}日',
+  },
+  'onThisDay.summary': {
+    zh: '{years} 个年份 · {count} 张照片',
+    ja: '{years} 年 · {count} 枚の写真',
+  },
+  'onThisDay.recentTitle': {
+    zh: '最近的记录',
+    ja: '最近の記録',
+  },
+  'onThisDay.daysAgo': {
+    zh: '{days} 天前',
+    ja: '{days} 日前',
+  },
+  'onThisDay.today': {
+    zh: '今天',
+    ja: '今日',
+  },
+  'onThisDay.all': {
+    zh: '查看全部',
+    ja: 'すべて見る',
+  },
+  'onThisDay.scrollHint': {
+    zh: '横向滑动查看更多',
+    ja: '横にスクロールして見られる',
+  },
+  'onThisDay.photoAria': {
+    zh: '{year} 年 {month}月{day}日的照片：{name}',
+    ja: '{year}年{month}月{day}日の写真：{name}',
+  },
   'hero.timeTravel': {
     zh: '▶ 时间旅行 · Explore My Life',
     ja: '▶ タイムトラベル · Explore My Life',

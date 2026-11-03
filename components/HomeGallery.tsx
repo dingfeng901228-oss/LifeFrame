@@ -8,6 +8,7 @@ import { TimeTravel } from '@/components/TimeTravel';
 import { LifeJourney } from '@/components/LifeJourney';
 import { PhotoViewer, type PhotoRow } from '@/components/PhotoViewer';
 import { copyText, useUrlViewState } from '@/lib/use-view-state';
+import { OnThisDayCard } from '@/components/OnThisDayCard';
 import { SearchBox } from '@/components/SearchBox';
 import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
 import { photoImageUrl } from '@/lib/photo-url';
@@ -322,6 +323,93 @@ export function HomeGallery({ locale }: { locale: Locale }) {
       .map(([year, yearPhotos]) => ({ year, photos: yearPhotos }));
   }, [photos]);
 
+  // Frank #7243 round-4: fallback for the "On This Day" card.
+  //
+  // 239 photos cover only 37 distinct month-days, so a strict
+  // "today's month-day" card is empty on ~85% of the calendar —
+  // the daily-reflection slot would sit blank most of the time.
+  // When today has nothing, we fall back to the most recent day
+  // that DOES have photos and label it as "最近的记录 / N 天前",
+  // so the slot always carries something real.
+  const recentMemory = useMemo(() => {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+
+    // Newest photo date first.
+    const newest = new Map<string, number>();
+    for (const p of photos) {
+      const ts = p.taken_at || p.created_at;
+      if (!ts) continue;
+      const d = new Date(ts);
+      if (isNaN(d.getTime())) continue;
+      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      const t = d.getTime();
+      const cur = newest.get(key);
+      if (cur === undefined || t > cur) newest.set(key, t);
+    }
+    if (newest.size === 0) return null;
+    const [latestTs] = [...newest.values()].sort((a, b) => b - a);
+    const latest = new Date(latestTs);
+    const key = `${latest.getFullYear()}-${latest.getMonth()}-${latest.getDate()}`;
+
+    const matching = photos.filter((p) => {
+      const ts = p.taken_at || p.created_at;
+      if (!ts) return false;
+      const d = new Date(ts);
+      if (isNaN(d.getTime())) return false;
+      return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}` === key;
+    });
+
+    const byYear = new Map<number, PhotoRow[]>();
+    for (const p of matching) {
+      const ts = p.taken_at || p.created_at;
+      const d = new Date(ts!);
+      const year = d.getFullYear();
+      const arr = byYear.get(year);
+      if (arr) arr.push(p);
+      else byYear.set(year, [p]);
+    }
+
+    const daysAgo = Math.max(
+      0,
+      Math.round((todayStart - new Date(latest.getFullYear(), latest.getMonth(), latest.getDate()).getTime()) / 86400000),
+    );
+
+    return {
+      groups: [...byYear.entries()]
+        .sort((a, b) => b[0] - a[0])
+        .map(([year, ps]) => ({ year, photos: ps })),
+      month: latest.getMonth() + 1,
+      day: latest.getDate(),
+      daysAgo,
+    };
+  }, [photos]);
+
+  // What the card actually shows: today's month-day when there is
+  // one, otherwise the most recent day that has photos.
+  const memoryCard = useMemo(() => {
+    if (onThisDayGrouped.length > 0) {
+      const now = new Date();
+      return {
+        mode: 'onThisDay' as const,
+        groups: onThisDayGrouped,
+        month: now.getMonth() + 1,
+        day: now.getDate(),
+        daysAgo: 0,
+      };
+    }
+    if (recentMemory && recentMemory.groups.length > 0) {
+      return {
+        mode: 'recent' as const,
+        groups: recentMemory.groups,
+        month: recentMemory.month,
+        day: recentMemory.day,
+        daysAgo: recentMemory.daysAgo,
+      };
+    }
+    return null;
+  }, [onThisDayGrouped, recentMemory]);
+
   // Frank #7509: cluster / swipe / prev-next logic moved into
   // components/PhotoViewer.tsx. HomeGallery now just renders the
   // viewer and passes visiblePhotos as the browse context.
@@ -453,6 +541,25 @@ export function HomeGallery({ locale }: { locale: Locale }) {
           </div>
         </div>
 
+
+            {/* Frank #7243 round-4: the "On This Day" card, borrowed
+                from OldMapsOnline / TimeMap (their daily time
+                machine). The photos are already computed in
+                `onThisDayGrouped` — they used to be reachable only
+                through a button + modal. Now they are on screen. */}
+            {memoryCard && (
+              <OnThisDayCard
+                groups={memoryCard.groups}
+                locale={locale}
+                mode={memoryCard.mode}
+                month={memoryCard.month}
+                day={memoryCard.day}
+                daysAgo={memoryCard.daysAgo}
+                onOpenAll={() => setOnThisDayOpen(true)}
+                onPick={(p) => setSelected(p)}
+              />
+            )}
+
         {/* Timeline at the bottom of the mobile stack. */}
         <div className="pointer-events-auto flex-shrink-0">
           <Timeline
@@ -542,6 +649,27 @@ export function HomeGallery({ locale }: { locale: Locale }) {
             onMarkerSelect={handleMarkerSelect}
             onClusterClick={handleClusterClick}
           />
+          {/* Frank #7243 round-4: the "On This Day" card floats over
+              the Globe like TimeMap's map widgets. Anchored bottom-
+              left, where the orthographic projection leaves the
+              corner empty. It costs ZERO vertical space — the
+              controls panel below was already at the viewport
+              limit, and an in-flow card pushed the Timeline off
+              screen. */}
+          {memoryCard && (
+            <div className="absolute bottom-3 left-3 z-20 w-[min(330px,calc(100%-1.5rem))]">
+              <OnThisDayCard
+                groups={memoryCard.groups}
+                locale={locale}
+                mode={memoryCard.mode}
+                month={memoryCard.month}
+                day={memoryCard.day}
+                daysAgo={memoryCard.daysAgo}
+                onOpenAll={() => setOnThisDayOpen(true)}
+                onPick={(p) => setSelected(p)}
+              />
+            </div>
+          )}
         </div>
 
         {/* Feature controls — search, on-this-day, time travel,
@@ -568,8 +696,8 @@ export function HomeGallery({ locale }: { locale: Locale }) {
                   onClick={() => setOnThisDayOpen(true)}
                   className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-cyan-500/40 dark:border-cyan-400/30 bg-white/95 dark:bg-black/40 px-4 text-xs text-cyan-700 dark:text-cyan-300/90 transition hover:border-cyan-500 dark:hover:border-cyan-400/60"
                 >
-                  📅 {t(locale, 'hero.onThisDay')} · {onThisDayGrouped.length} 个年份 ·{' '}
-                  {onThisDayGrouped.reduce((s, g) => s + g.photos.length, 0)} 张照片
+                  📅 {t(locale, 'hero.onThisDay')} · {memoryCard?.groups.length ?? 0} 个年份 ·{' '}
+                  {(memoryCard?.groups ?? []).reduce((s, g) => s + g.photos.length, 0)} 张照片
                 </button>
               )}
               {photos.length > 0 && (
@@ -594,6 +722,12 @@ export function HomeGallery({ locale }: { locale: Locale }) {
               )}
             </div>
           </div>
+
+            {/* Frank #7243 round-4: the "On This Day" card, borrowed
+                from OldMapsOnline / TimeMap (their daily time
+                machine). The photos are already computed in
+                `onThisDayGrouped` — they used to be reachable only
+                through a button + modal. Now they are on screen. */}
           {fetchError && (
             <div
               role="status"
@@ -773,7 +907,12 @@ export function HomeGallery({ locale }: { locale: Locale }) {
             <div className="mb-6 flex items-center justify-between">
               <h2 className="text-2xl font-light text-white">
                 📅{' '}
-                {new Date().getMonth() + 1}月{new Date().getDate()}日 · 历史上
+                {memoryCard
+                  ? `${memoryCard.month}月${memoryCard.day}日${
+                      memoryCard.mode === 'recent' ? ` · ${memoryCard.daysAgo} 天前` : ''
+                    }`
+                  : `${new Date().getMonth() + 1}月${new Date().getDate()}日`}{' '}
+                · 历史上
               </h2>
               <button
                 type="button"
@@ -783,7 +922,7 @@ export function HomeGallery({ locale }: { locale: Locale }) {
                 ✕ 关闭
               </button>
             </div>
-            {onThisDayGrouped.map((g) => (
+            {(memoryCard?.groups ?? onThisDayGrouped).map((g) => (
               <div key={g.year} className="mb-8">
                 <h3 className="mb-3 text-lg font-light text-white/80">
                   {g.year} 年 · {g.photos.length} 张
