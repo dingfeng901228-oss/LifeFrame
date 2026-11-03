@@ -118,9 +118,16 @@ async function diagnose() {
     if (hit.status === 'ACTIVE_HEALTHY') {
       console.log('  The project is alive. Something else is wrong — run');
       console.log('  scripts/check-r2-exif.mjs and check the Vercel env vars.');
-    } else if (/PAUSED/i.test(hit.status)) {
+    } else if (/PAUSED|INACTIVE|COMING_UP|RESTORING/i.test(hit.status)) {
+      // IMPORTANT: a paused project's subdomain stops resolving DNS,
+      // so NXDOMAIN from the outside looks exactly like "deleted".
+      // Only the Management API can tell them apart — always
+      // diagnose here before concluding anything.
       console.log('  It was PAUSED, not deleted — the data is intact.');
+      console.log('  (Free-tier projects are paused after a period of');
+      console.log('   inactivity, and a paused subdomain stops resolving.)');
       console.log('  Run:  node scripts/supabase-recover.mjs restore');
+      console.log('  Then poll until the status flips to ACTIVE_HEALTHY.');
     } else {
       console.log(`  Unexpected status. Restore versions available? checking…`);
       try {

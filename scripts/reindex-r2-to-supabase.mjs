@@ -1,12 +1,24 @@
 // Frank #7243 round-2: rebuild the `photos` table from the R2 bucket.
 //
 // WHY THIS EXISTS
-//   The Supabase project that held LifeFrame's photo metadata was
-//   deleted. The Cloudflare R2 bucket that holds the actual image
-//   files was NOT — every original JPEG is still there, including
-//   its EXIF block (GPS lat/lng + DateTimeOriginal + camera make
-//   and model). So the metadata can be rebuilt from the files
-//   themselves; nothing was permanently lost.
+//   FALLBACK PATH. The Supabase project that held LifeFrame's
+//   photo metadata turned out to be PAUSED (status INACTIVE), not
+//   deleted — `supabase-recover.mjs restore` brought it back with
+//   all 239 rows and the 5 likes intact. So this script was not
+//   needed.
+//
+//   It stays in the repo because a project CAN be deleted for real
+//   (Supabase removes the database and its backups on delete), and
+//   in that case the Cloudflare R2 bucket that holds the actual
+//   image files is what saves the data: every original JPEG is
+//   still there, including its EXIF block (GPS lat/lng +
+//   DateTimeOriginal + camera make and model), so the metadata can
+//   be rebuilt from the files themselves.
+//
+//   Known limitation vs. a live restore: EXIF only carries the
+//   coordinates the camera wrote, so photos whose location was
+//   typed in by hand come back without a location. The live DB had
+//   207 rows with GPS; EXIF can only recover 105 of them.
 //
 // WHAT IT DOES
 //   1. Lists every object under uploads/ in the R2 bucket.
