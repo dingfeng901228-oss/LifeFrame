@@ -6,7 +6,9 @@ import { chromium } from 'playwright';
 import lighthouse from 'lighthouse';
 import { writeFileSync } from 'node:fs';
 
-const BASE = 'https://lifeframe.frank2025.com';
+// Default to the production deployment; LF_BASE overrides it (use
+// it to audit a local production build).
+const BASE = process.env.LF_BASE || 'https://lifeframe.frank2025.com';
 const ROUTES = [
   { path: '/', label: 'home' },
   { path: '/welcome', label: 'welcome' },
@@ -17,10 +19,12 @@ const ROUTES = [
 // Lighthouse needs a CDP-compatible browser, but we can
 // also use the chrome-launcher to spawn chrome directly.
 // Use playwright chromium to get the debugging port.
+// 9222 is the port the Hermes browser tool already holds; pick a
+// free one so the two can coexist.
+const port = Number(process.env.LH_PORT || 9333);
 const browser = await chromium.launch({
-  args: ['--remote-debugging-port=9222'],
+  args: [`--remote-debugging-port=${port}`],
 });
-const port = 9222;
 const results = [];
 
 for (const route of ROUTES) {

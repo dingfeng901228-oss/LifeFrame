@@ -7,7 +7,11 @@ import { chromium } from 'playwright';
 import { AxeBuilder } from '@axe-core/playwright';
 import { writeFileSync } from 'node:fs';
 
-const BASE = 'https://lifeframe.frank2025.com';
+// Default to the production deployment; override with LF_BASE to
+// audit a local production build (node scripts/audit-a11y.mjs local).
+const BASE =
+  process.env.LF_BASE ||
+  (process.argv[2] === 'local' ? 'http://localhost:3000' : 'https://lifeframe.frank2025.com');
 const ROUTES = [
   { path: '/', label: 'home' },
   { path: '/welcome', label: 'welcome' },

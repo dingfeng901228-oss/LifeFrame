@@ -1,12 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Globe } from '@/components/Globe';
 import { Timeline } from '@/components/Timeline';
 import { TimeTravel } from '@/components/TimeTravel';
 import { LifeJourney } from '@/components/LifeJourney';
 import { PhotoViewer, type PhotoRow } from '@/components/PhotoViewer';
+import { copyText, useUrlViewState } from '@/lib/use-view-state';
 import { SearchBox } from '@/components/SearchBox';
 import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
 import { photoImageUrl } from '@/lib/photo-url';
@@ -28,18 +29,38 @@ export function HomeGallery({ locale }: { locale: Locale }) {
   // doesn't have to know how to hard-refresh the page.
   const [reloadToken, setReloadToken] = useState(0);
   const [selected, setSelected] = useState<PhotoRow | null>(null);
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  // Frank #7243 round-3: the selected date and the search query now
+  // live in the URL hash, borrowed from OldMapsOnline / TimeMap
+  // (#position=.../&year=...). Any view can be shared or bookmarked,
+  // and the browser's back button walks through past views.
+  const {
+    selectedDate,
+    setSelectedDate,
+    searchQuery,
+    setSearchQuery,
+    shareUrl,
+  } = useUrlViewState();
   // Frank #7509: cluster browsing now flows through the unified
   // PhotoViewer, which navigates visiblePhotos chronologically.
   // Cluster photos are typically adjacent in time at the same
   // location, so this naturally walks through them. No separate
   // cluster context state needed.
+  // Frank #7243 round-3: "share this view" — copies the URL with
+  // the current date + search query encoded in the hash.
+  const [shareState, setShareState] = useState<'idle' | 'copied' | 'manual'>('idle');
+  const shareTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleShare = useCallback(async () => {
+    const result = await copyText(shareUrl());
+    if (result === 'failed') return;
+    setShareState(result === 'copied' ? 'copied' : 'manual');
+    if (shareTimer.current) clearTimeout(shareTimer.current);
+    shareTimer.current = setTimeout(() => setShareState('idle'), 2400);
+  }, [shareUrl]);
   const [onThisDayOpen, setOnThisDayOpen] = useState(false);
   const [clusterOpen, setClusterOpen] = useState(false);
   const [clusterPhotos, setClusterPhotos] = useState<PhotoRow[]>([]);
   const [timeTravelOpen, setTimeTravelOpen] = useState(false);
   const [lifeJourneyOpen, setLifeJourneyOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   // null = not loaded yet / guest; set after auth.getSession() resolves.
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
 
@@ -439,6 +460,8 @@ export function HomeGallery({ locale }: { locale: Locale }) {
             selectedDate={selectedDate}
             onChange={setSelectedDate}
             windowDays={TIMELINE_WINDOW_DAYS}
+            onShare={handleShare}
+            shareState={shareState}
           />
         </div>
       </div>
@@ -636,6 +659,8 @@ export function HomeGallery({ locale }: { locale: Locale }) {
             selectedDate={selectedDate}
             onChange={setSelectedDate}
             windowDays={TIMELINE_WINDOW_DAYS}
+            onShare={handleShare}
+            shareState={shareState}
           />
         </div>
       </div>

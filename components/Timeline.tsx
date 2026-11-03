@@ -16,6 +16,12 @@ type Props = {
   selectedDate: Date | null;
   onChange: (d: Date | null) => void;
   windowDays: number;
+  /** Frank #7243 round-3: copies the current view's URL. The
+      selected date + search query are encoded in the hash, so the
+      copied link reopens exactly this moment. */
+  onShare?: () => void;
+  /** Result of the last share attempt, for the button's label. */
+  shareState?: 'idle' | 'copied' | 'manual';
 };
 
 const MS_PER_DAY = 24 * 3600 * 1000;
@@ -58,6 +64,8 @@ export function Timeline({
   selectedDate,
   onChange,
   windowDays,
+  onShare,
+  shareState = 'idle',
 }: Props) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -278,6 +286,78 @@ export function Timeline({
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // Frank #7243 round-3: year ticks, borrowed from OldMapsOnline /
+  // TimeMap. Their time slider carries explicit year marks, so you
+  // can *see* how time is distributed and jump straight to a year.
+  // LifeFrame's track only had the two end dates, which made the
+  // 35-year span feel like one undifferentiated line.
+  //
+  // Each tick jumps to the EARLIEST photo of that year when there
+  // is one (jumping to Jan 1 of an empty year lands on nothing),
+  // otherwise to Jan 1.
+  const yearTicks = useMemo(() => {
+    const startYear = minDate.getFullYear();
+    const endYear = maxDate.getFullYear();
+    const span = endYear - startYear;
+    // 5-year steps on a normal screen, 10-year on narrow ones so
+    // the labels never collide.
+    const step = span > 28 ? 5 : span > 12 ? 2 : 1;
+    const ticks: Array<{ year: number; pos: number; count: number }> = [];
+    for (let y = startYear; y <= endYear; y += step) {
+      const at = new Date(y, 0, 1);
+      const pos = ((at.getTime() - minDate.getTime()) / totalSpan) * 100;
+      if (pos < -1 || pos > 101) continue;
+      ticks.push({ year: y, pos: Math.max(0, Math.min(100, pos)), count: 0 });
+    }
+    // Always land on the final year, even if the step skipped it.
+    // If the final year would sit on top of the previous tick
+    // (2025 → 2026 is only ~20 px apart), REPLACE that tick instead
+    // of adding a second one, so the labels never overlap.
+    const lastYear = endYear;
+    const lastPos = ((new Date(lastYear, 0, 1).getTime() - minDate.getTime()) / totalSpan) * 100;
+    const prev = ticks[ticks.length - 1];
+    if (!prev) {
+      ticks.push({ year: lastYear, pos: Math.max(0, Math.min(100, lastPos)), count: 0 });
+    } else if (lastPos - prev.pos < 4) {
+      ticks[ticks.length - 1] = {
+        year: lastYear,
+        pos: Math.max(0, Math.min(100, lastPos)),
+        count: 0,
+      };
+    } else {
+      ticks.push({ year: lastYear, pos: Math.max(0, Math.min(100, lastPos)), count: 0 });
+    }
+    // Count the photos per tick year so the tooltip can say
+    // "1998 · 14 张照片".
+    for (const t of ticks) {
+      t.count = photos.filter((p) => {
+        if (!p.taken_at) return false;
+        const d = new Date(p.taken_at);
+        return !Number.isNaN(d.getTime()) && d.getFullYear() === t.year;
+      }).length;
+    }
+    return ticks;
+  }, [minDate, maxDate, totalSpan, photos]);
+
+  const jumpToYear = useCallback(
+    (year: number) => {
+      setPlaying(false);
+      const first = photos
+        .filter((p) => {
+          if (!p.taken_at) return false;
+          const d = new Date(p.taken_at);
+          return !Number.isNaN(d.getTime()) && d.getFullYear() === year;
+        })
+        .sort(
+          (a, b) =>
+            new Date(a.taken_at as string).getTime() -
+            new Date(b.taken_at as string).getTime(),
+        )[0];
+      onChange(first ? new Date(first.taken_at as string) : new Date(year, 0, 1));
+    },
+    [photos, onChange],
+  );
+
   const handlePos = selectedDate ? positionFor(selectedDate) : null;
   const halfWindowPct = (windowDays / 2 / (totalSpan / MS_PER_DAY)) * 100;
   const rangeStart =
@@ -290,14 +370,37 @@ export function Timeline({
       {/* Compact header — just the date range. No instructions, no
           "筛选：..." copy. The interaction is self-evident once you
           touch the bar. */}
-      <div className="mb-1.5 flex items-center justify-between text-[10px] tracking-wider text-black/60 dark:text-white/55 tabular-nums">
-        <span>{formatShort(minDate)}</span>
+      <div className="mb-1.5 flex items-center justify-between gap-2 text-[10px] tracking-wider text-black/60 dark:text-white/55 tabular-nums">
+        <span className="shrink-0">{formatShort(minDate)}</span>
         {selectedDate && (
-          <span className="text-cyan-600 dark:text-cyan-300/80">
+          <span className="shrink-0 text-cyan-600 dark:text-cyan-300/80">
             {formatShort(selectedDate)} ± {Math.round(windowDays / 2)} 天
           </span>
         )}
-        <span>{formatShort(maxDate)}</span>
+        <div className="flex shrink-0 items-center gap-2">
+          <span>{formatShort(maxDate)}</span>
+          {/* Frank #7243 round-3: share the current view. The date
+              and the search query live in the URL hash, so the
+              copied link reopens this exact moment. */}
+          {onShare && (
+            <button
+              type="button"
+              onClick={onShare}
+              title="复制当前视图的链接"
+              aria-label="复制当前视图的链接"
+              // z-30 + a solid background: the scrub thumbnail popup
+              // floats above the bar at z-20 and would otherwise sit
+              // on top of this button.
+              className="relative z-30 inline-flex min-h-[28px] items-center gap-1 rounded-full border border-black/20 bg-white/90 px-2 text-[10px] tracking-normal backdrop-blur-sm transition hover:bg-black/5 dark:border-white/20 dark:bg-black/80 dark:hover:bg-white/10"
+            >
+              {shareState === 'copied'
+                ? '✓ 已复制'
+                : shareState === 'manual'
+                  ? '📋 请手动复制'
+                  : '🔗 分享'}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="relative">
@@ -430,6 +533,64 @@ export function Timeline({
             />
           )}
         </div>
+
+        {/* Frank #7243 round-3: year tick row, borrowed from
+            OldMapsOnline / TimeMap. Their slider shows explicit year
+            marks; LifeFrame's track only had the two end dates, which
+            made a 35-year span read as one flat line. Clicking a year
+            jumps to it — landing on that year's earliest photo when
+            there is one, so you never jump to an empty year.
+
+            The row is IN FLOW (not absolute): an absolutely
+            positioned row doesn't reserve space, so the playback
+            controls below it would slide up and collide with the
+            year labels. */}
+        <div className="relative mt-1 h-4">
+          {yearTicks.map((t) => {
+            // Keep the first and last labels inside the track instead
+            // of letting them hang off both ends.
+            const align =
+              t.pos < 4
+                ? 'translate-x-0'
+                : t.pos > 96
+                  ? '-translate-x-full'
+                  : '-translate-x-1/2';
+            const isActive =
+              selectedDate !== null && selectedDate.getFullYear() === t.year;
+            return (
+              <button
+                key={t.year}
+                type="button"
+                onClick={() => jumpToYear(t.year)}
+                style={{ left: `${t.pos}%` }}
+                title={`${t.year} 年 · ${t.count} 张照片`}
+                aria-label={`跳到 ${t.year} 年，${t.count} 张照片`}
+                className={`group absolute top-0 flex flex-col items-center ${align}`}
+              >
+                <span
+                  className={`block h-1.5 w-px transition ${
+                    isActive
+                      ? 'bg-cyan-500 dark:bg-cyan-400'
+                      : 'bg-black/25 group-hover:bg-cyan-500 dark:bg-white/25 dark:group-hover:bg-cyan-400'
+                  }`}
+                />
+                <span
+                  className={`mt-0.5 block text-[9px] leading-none tabular-nums transition ${
+                    isActive
+                      ? 'font-medium text-cyan-600 dark:text-cyan-300'
+                      : // Frank #7243 round-3: axe needs 4.5:1 even at
+                        // 9 px, so the inactive labels use the same
+                        // 60/55 opacity as the timeline header (45%
+                        // failed the contrast check).
+                        'text-black/60 group-hover:text-cyan-600 dark:text-white/55 dark:group-hover:text-cyan-300'
+                  }`}
+                >
+                  {t.year}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Frank #7292: playback control row — video-player style.
@@ -438,7 +599,7 @@ export function Timeline({
           speed buttons for screen readers. Space toggles
           play / pause from anywhere; the buttons here are for
           mouse / touch. */}
-      <div className="mt-1.5 flex items-center justify-center gap-2 text-xs text-black/65 dark:text-white/65">
+      <div className="mt-1.5 flex items-center justify-center gap-1.5 text-xs text-black/65 dark:text-white/65 sm:gap-2">
         <button
           type="button"
           onClick={() => {
@@ -447,7 +608,7 @@ export function Timeline({
           }}
           aria-label="回到起点"
           title="回到起点"
-          className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-black/20 px-3 text-base transition hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/5"
+          className="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full border border-black/20 px-3 text-base transition hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/5"
         >
           ⏮
         </button>
@@ -456,7 +617,7 @@ export function Timeline({
           onClick={() => setPlaying((p) => !p)}
           aria-label={playing ? '暂停播放' : '开始播放'}
           title={playing ? '暂停 (空格)' : '播放 (空格)'}
-          className="inline-flex min-h-[44px] items-center justify-center rounded-full bg-black px-4 text-sm font-medium text-white transition hover:bg-black/90 dark:bg-white dark:text-black dark:hover:bg-white/90"
+          className="inline-flex min-h-[44px] shrink-0 items-center justify-center whitespace-nowrap rounded-full bg-black px-3 text-sm font-medium text-white transition hover:bg-black/90 sm:px-4 dark:bg-white dark:text-black dark:hover:bg-white/90"
         >
           {playing ? '⏸ 暂停' : '▶ 播放'}
         </button>
@@ -472,7 +633,7 @@ export function Timeline({
         >
           ⏭
         </button>
-        <div className="ml-1 flex gap-0.5 rounded-full border border-black/20 p-0.5 dark:border-white/20">
+        <div className="ml-1 flex shrink-0 gap-0.5 rounded-full border border-black/20 p-0.5 dark:border-white/20">
           {SPEED_OPTIONS.map((s, i) => (
             <button
               key={s.label}
