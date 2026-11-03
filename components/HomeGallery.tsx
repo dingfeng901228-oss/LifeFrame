@@ -470,7 +470,31 @@ export function HomeGallery({ locale }: { locale: Locale }) {
                       : t(locale, 'hero.subtitle.countNoFilter', { count: photos.length })}
             </p>
           </div>
-        </div>
+        
+          {/* Frank #7243 round-4: the memory card floats over the
+              bottom of the mobile Globe. It must NOT sit in the
+              document flow: the card only appears once the
+              client-side photo fetch resolves, so anything in the
+              flow below it (the whole #features section) shifted
+              down — a real CLS (0.118) on mobile. A floating
+              widget moves nothing. Compact variant, because the
+              mobile Globe is only 44vh tall. */}
+          {memoryCard && (
+            <div className="absolute inset-x-0 bottom-0 z-20 px-2 pb-2">
+              <OnThisDayCard
+                groups={memoryCard.groups}
+                locale={locale}
+                mode={memoryCard.mode}
+                month={memoryCard.month}
+                day={memoryCard.day}
+                daysAgo={memoryCard.daysAgo}
+                onOpenAll={() => setOnThisDayOpen(true)}
+                onPick={(p) => setSelected(p)}
+                compact
+              />
+            </div>
+          )}
+</div>
 
         {/* Mobile controls row — Frank #0906 round-13 (P2 #14
             cont. 2): the mobile layout now gets the same search
@@ -568,18 +592,7 @@ export function HomeGallery({ locale }: { locale: Locale }) {
                 the Timeline down — a real CLS (0.12) on mobile.
                 Content inserted below the visible area moves
                 nothing that is already on screen. */}
-            {memoryCard && (
-              <OnThisDayCard
-                groups={memoryCard.groups}
-                locale={locale}
-                mode={memoryCard.mode}
-                month={memoryCard.month}
-                day={memoryCard.day}
-                daysAgo={memoryCard.daysAgo}
-                onOpenAll={() => setOnThisDayOpen(true)}
-                onPick={(p) => setSelected(p)}
-              />
-            )}
+
       </div>
 
       {/* Frank #7243 Task 4: wrap the existing absolute-overlay

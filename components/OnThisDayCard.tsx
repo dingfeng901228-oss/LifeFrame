@@ -56,6 +56,13 @@ type Props = {
   daysAgo: number;
   onOpenAll: () => void;
   onPick: (photo: PhotoRow) => void;
+  /**
+   * Compact variant — one row, small thumbnails. Used on mobile,
+   * where the card floats over the bottom of the Globe. It has to
+   * be compact because the mobile Globe is only 44vh tall and a
+   * 140 px card would cover a third of it.
+   */
+  compact?: boolean;
 };
 
 export function OnThisDayCard({
@@ -67,6 +74,7 @@ export function OnThisDayCard({
   daysAgo,
   onOpenAll,
   onPick,
+  compact = false,
 }: Props) {
   const stripRef = useRef<HTMLDivElement>(null);
   // The ‹ › arrows are only useful when the strip actually
@@ -116,22 +124,44 @@ export function OnThisDayCard({
   return (
     <section
       aria-label={t(locale, 'onThisDay.title')}
-      className="mx-auto w-full max-w-4xl rounded-2xl border border-cyan-500/25 bg-white/70 px-4 py-3 shadow-sm backdrop-blur-md dark:border-cyan-400/20 dark:bg-black/40"
+      className={
+        compact
+          ? 'w-full rounded-xl border border-cyan-500/25 bg-white/75 px-3 py-2 backdrop-blur-md dark:border-cyan-400/20 dark:bg-black/55'
+          : 'mx-auto w-full max-w-4xl rounded-2xl border border-cyan-500/25 bg-white/70 px-4 py-3 shadow-sm backdrop-blur-md dark:border-cyan-400/20 dark:bg-black/40'
+      }
     >
       {/* Two-line header: title + "see all" on the first line, the
           date / summary meta on the second. As a single wrapping row
           the meta items broke mid-phrase at the 330 px overlay
           width ("最近的记 / 录"). Each meta item is its own span, so
           it wraps as a whole rather than splitting. */}
-      <div className="mb-2 flex items-start justify-between gap-2">
+      <div
+        className={
+          compact
+            ? 'flex items-center gap-2'
+            : 'mb-2 flex items-start justify-between gap-2'
+        }
+      >
         <div className="min-w-0">
-          <h2 className="truncate text-sm font-medium text-black/85 dark:text-white/85">
+          <h2
+            className={
+              compact
+                ? 'truncate text-xs font-medium text-black/85 dark:text-white/85'
+                : 'truncate text-sm font-medium text-black/85 dark:text-white/85'
+            }
+          >
             📅{' '}
             {mode === 'onThisDay'
               ? t(locale, 'onThisDay.title')
               : t(locale, 'onThisDay.recentTitle')}
           </h2>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs tabular-nums text-black/60 dark:text-white/60">
+          <div
+            className={
+              compact
+                ? 'mt-0 flex items-center gap-1.5 text-[11px] tabular-nums text-black/60 dark:text-white/60'
+                : 'mt-0.5 flex flex-wrap items-center gap-x-2 text-xs tabular-nums text-black/60 dark:text-white/60'
+            }
+          >
             <span className="whitespace-nowrap">
               {t(locale, 'onThisDay.date', { month, day })}
             </span>
@@ -142,24 +172,30 @@ export function OnThisDayCard({
                   : t(locale, 'onThisDay.daysAgo', { days: daysAgo })}
               </span>
             )}
-            <span className="whitespace-nowrap text-black/55 dark:text-white/55">
-              {t(locale, 'onThisDay.summary', {
-                years: ordered.length,
-                count: total,
-              })}
-            </span>
+            {!compact && (
+              <span className="whitespace-nowrap text-black/55 dark:text-white/55">
+                {t(locale, 'onThisDay.summary', {
+                  years: ordered.length,
+                  count: total,
+                })}
+              </span>
+            )}
           </div>
         </div>
         <button
           type="button"
           onClick={onOpenAll}
-          className="inline-flex min-h-[32px] shrink-0 items-center gap-1 rounded-full border border-cyan-500/40 px-3 text-[11px] text-cyan-700 transition hover:border-cyan-500 dark:border-cyan-400/30 dark:text-cyan-300/90"
+          className={
+            compact
+              ? 'inline-flex min-h-[28px] shrink-0 items-center gap-1 rounded-full border border-cyan-500/40 px-2.5 text-[11px] text-cyan-700 transition hover:border-cyan-500 dark:border-cyan-400/30 dark:text-cyan-300/90'
+              : 'inline-flex min-h-[32px] shrink-0 items-center gap-1 rounded-full border border-cyan-500/40 px-3 text-[11px] text-cyan-700 transition hover:border-cyan-500 dark:border-cyan-400/30 dark:text-cyan-300/90'
+          }
         >
           {t(locale, 'onThisDay.all')} ›
         </button>
       </div>
 
-      <div className="flex items-center gap-1">
+      <div className={`flex items-center gap-1 ${compact ? 'mt-1.5' : ''}`}>
         <button
           type="button"
           onClick={() => scrollBy(-1)}
@@ -187,7 +223,9 @@ export function OnThisDayCard({
                 day,
                 name: p.filename,
               })}
-              className="group relative h-16 w-16 shrink-0 overflow-hidden rounded-lg ring-1 ring-black/10 transition hover:ring-2 hover:ring-cyan-500 dark:ring-white/10 dark:hover:ring-cyan-400"
+              className={`group relative shrink-0 overflow-hidden rounded-lg ring-1 ring-black/10 transition hover:ring-2 hover:ring-cyan-500 dark:ring-white/10 dark:hover:ring-cyan-400 ${
+                compact ? 'h-11 w-11' : 'h-16 w-16'
+              }`}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
