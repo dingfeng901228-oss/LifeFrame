@@ -111,7 +111,7 @@ export function ThemeToggle({ locale = 'zh' as Locale }: { locale?: Locale } = {
     <div
       role="group"
       aria-label={t(locale, 'theme.label')}
-      className="flex items-center gap-0.5 rounded-full border border-[var(--border-primary)] bg-[var(--bg-elevated)] p-0.5 text-xs"
+      className="flex shrink-0 items-center gap-0.5 rounded-full border border-[var(--border-primary)] bg-[var(--bg-elevated)] p-0.5 text-xs"
     >
       {options.map((o) => {
         const isSelected = theme === o.value;
@@ -123,7 +123,7 @@ export function ThemeToggle({ locale = 'zh' as Locale }: { locale?: Locale } = {
               onClick={() => pick(o.value)}
               aria-label={label}
               aria-pressed={isSelected}
-              className={`rounded-full px-2 py-1 transition ${
+              className={`rounded-full px-1.5 py-1 transition sm:px-2 ${
                 isSelected
                   ? 'bg-[var(--text-primary)] text-[var(--bg-primary)]'
                   : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'

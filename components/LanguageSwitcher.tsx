@@ -55,7 +55,7 @@ export function LanguageSwitcher({ current }: Props) {
       // inverts the colors for unambiguous "currently selected"
       // state — bg-black text-white on light, bg-white text-black
       // on dark. Both combos are AAA-contrast on their bg.
-      className="inline-flex items-center rounded-full border border-black/15 bg-white/95 p-0.5 dark:border-white/20 dark:bg-black/40"
+      className="inline-flex shrink-0 items-center rounded-full border border-black/15 bg-white/95 p-0.5 dark:border-white/20 dark:bg-black/40"
     >
       {LOCALES.map((l) => {
         const active = l.code === current;
@@ -66,7 +66,7 @@ export function LanguageSwitcher({ current }: Props) {
             onClick={() => setLocale(l.code)}
             disabled={pending}
             aria-pressed={active}
-            className={`min-h-[28px] rounded-full px-3 py-0.5 text-xs font-medium transition focus-visible:ring-2 focus-visible:ring-cyan-400 disabled:cursor-not-allowed disabled:opacity-50 ${
+            className={`min-h-[28px] whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium transition sm:px-3 focus-visible:ring-2 focus-visible:ring-cyan-400 disabled:cursor-not-allowed disabled:opacity-50 ${
               active
                 ? 'bg-black text-white dark:bg-white dark:text-black'
                 : 'text-black/65 hover:bg-black/5 hover:text-black dark:text-white/70 dark:hover:bg-white/10 dark:hover:text-white'

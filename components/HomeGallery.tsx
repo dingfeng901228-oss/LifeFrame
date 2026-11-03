@@ -68,6 +68,15 @@ export function HomeGallery({ locale }: { locale: Locale }) {
       return;
     }
     let cancelled = false;
+    // Frank #7243 round-2: the fetch gets a hard timeout. When
+    // the data service is unreachable the browser's DNS/connect
+    // retry can hang for 30+ seconds, which left the hero stuck
+    // on "加载中…" instead of showing the failure notice. 12 s is
+    // long enough for a slow-but-alive service on a bad
+    // connection and short enough that the visitor gets an
+    // actionable error.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
     (async () => {
       try {
         const { data, error } = await supabase
@@ -76,7 +85,8 @@ export function HomeGallery({ locale }: { locale: Locale }) {
             'id, key, lat, lng, public_url, thumbnail_url, filename, taken_at, created_at, camera_make, camera_model, categories, location_name',
           )
           .order('created_at', { ascending: false })
-          .limit(500);
+          .limit(500)
+          .abortSignal(controller.signal);
         if (cancelled) return;
         if (error) {
           console.error('[gallery fetch error]', error.message);
@@ -86,15 +96,25 @@ export function HomeGallery({ locale }: { locale: Locale }) {
         }
       } catch (err) {
         if (cancelled) return;
-        const msg = err instanceof Error ? err.message : String(err);
+        const aborted =
+          err instanceof Error &&
+          (err.name === 'AbortError' || /abort/i.test(err.message));
+        const msg = aborted
+          ? '请求超时（12 秒）'
+          : err instanceof Error
+            ? err.message
+            : String(err);
         console.error('[gallery fetch threw]', msg);
         setFetchError(msg);
       } finally {
+        clearTimeout(timeout);
         if (!cancelled) setLoading(false);
       }
     })();
     return () => {
       cancelled = true;
+      clearTimeout(timeout);
+      controller.abort();
     };
     // Frank #7243 round-2: reloadToken lets the retry button
     // re-run this fetch without a page reload.

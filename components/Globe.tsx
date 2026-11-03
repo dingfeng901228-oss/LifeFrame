@@ -1,6 +1,14 @@
 'use client';
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   geoOrthographic,
   geoPath,
@@ -25,7 +33,13 @@ type Props = {
 // Scale bounds. The lower bound is set so the ocean + countries
 // always fill the visible area; the upper bound lets the user zoom
 // deep enough to see a single country's borders in detail.
-const MIN_SCALE = 220;
+// Absolute floor for the user's zoom-out. The effective floor is
+// `fitScale * 0.55` (see fitScaleRef below) — a fixed constant
+// can't work because the earth has to be able to shrink enough
+// to fit a 390 px phone screen. 220 used to be the floor, and it
+// was LARGER than the fitted scale on mobile (371 × 0.46 = 171),
+// so the clamp pushed the earth up to 220 and cropped it.
+const MIN_SCALE = 60;
 const MAX_SCALE = 2400;
 // Angular rotation per second when autorotating.
 const ROTATE_DEG_PER_SEC = 3.6;
@@ -38,6 +52,18 @@ const DRAG_SENSITIVITY = 0.32;
 // instead of re-deriving the projection, so the paths are
 // computed exactly once.
 const BASE_SCALE = 360;
+// The SSR HTML can't know the viewport, so the first paint uses
+// this conservative default (the earth fills ~95% of a 390 px
+// mobile viewport). The layout effect below corrects it before
+// the browser paints, so the default is never actually seen.
+const INITIAL_VISUAL_SCALE = 0.5;
+
+// useLayoutEffect warns during SSR ("does nothing on the server")
+// and React only runs the client branch anyway. Swapping in
+// useEffect on the server keeps the console clean while still
+// getting the pre-paint timing we need in the browser.
+const useIsomorphicLayoutEffect =
+  typeof window === 'undefined' ? useEffect : useLayoutEffect;
 
 type Size = { w: number; h: number };
 
@@ -55,7 +81,13 @@ type Size = { w: number; h: number };
  */
 function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {}) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
-  const [size, setSize] = useState<Size>({ w: 800, h: 800 });
+  // Start at 0×0, NOT 800×800. The old placeholder made the
+  // initial-scale effect compute minDim from a viewport that
+  // never existed, and because the effect's dep was a boolean
+  // (`size.w === 0 && size.h === 0`) it never re-ran when the
+  // real measurement arrived. The globe therefore kept the
+  // placeholder's zoom and was cropped on narrow screens.
+  const [size, setSize] = useState<Size>({ w: 0, h: 0 });
   // Frank #7243 review: `scale` and `rotation` are no longer
   // React state — both are now read+written via refs so the
   // auto-rotation raf loop and gesture handlers don't trigger
@@ -80,6 +112,15 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
   // at the BASE_SCALE used to build the static SVG.
   const globeRotationRef = useRef<[number, number]>([0, -22]);
   const zoomLayerRef = useRef<SVGGElement | null>(null);
+  // Tracks whether the globe has been fitted to the viewport yet.
+  // The fit must happen exactly once, on the first real
+  // measurement — not on every resize (that would throw away the
+  // user's zoom).
+  const initialFitDoneRef = useRef(false);
+  // The scale the globe was fitted to at mount. The user's
+  // zoom-out floor is derived from it (55% of the fitted size),
+  // so it tracks the viewport instead of being a fixed constant.
+  const fitScaleRef = useRef(BASE_SCALE);
 
   // Tracks whether the pointer moved enough between pointerdown and
   // pointerup to count as a drag (vs. a click). Used by the up
@@ -209,14 +250,23 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
   //    fills that axis on first paint. When the user zooms in, the
   //    scale increases; when the window resizes, the next measure
   //    doesn't auto-rescale (the user's chosen zoom is preserved).
-  useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     if (size.w <= 0 || size.h <= 0) return;
+    // Fit exactly once. After that the user's chosen zoom is
+    // preserved across window resizes (the previous behaviour).
+    if (initialFitDoneRef.current) return;
     const minDim = Math.min(size.w, size.h);
-    const initialScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, minDim * 0.46));
+    // The earth's on-screen diameter is ~1.989 × scale (the ocean
+    // circle is r = BASE_SCALE - 2 = 358 px in viewBox units, and
+    // the viewBox maps 1 unit to 1 px). So `minDim * 0.50` makes
+    // the globe exactly fill the smaller viewport axis.
+    const initialScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, minDim * 0.5));
+    fitScaleRef.current = initialScale;
     globeScaleRef.current = initialScale;
-    // Apply initial scale to the zoom-layer once it's mounted.
-    // The ref is set immediately so subsequent wheel/pinch reads
-    // a sensible value, even before the ref element is attached.
+    // Apply the fitted scale to the zoom-layer. useLayoutEffect
+    // runs before the browser paints, so the first frame the user
+    // sees is already correctly framed — no "huge earth then
+    // shrink" pop.
     if (zoomLayerRef.current) {
       const visual = initialScale / BASE_SCALE;
       const [lambda] = globeRotationRef.current;
@@ -225,9 +275,13 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
         `rotate(${-lambda}) scale(${visual})`,
       );
     }
-    // We only want to set this once per layout, not on every render.
+    // Only fit the globe once per mount. After that the user's
+    // chosen zoom is preserved across window resizes (same
+    // behaviour as before, but now the FIRST fit uses the real
+    // measured viewport instead of the old 800×800 placeholder).
+    initialFitDoneRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [size.w === 0 && size.h === 0]);
+  }, [size.w, size.h]);
 
   // ── Auto-rotation via requestAnimationFrame ─────────────────────
   // Frank #7243 review: this no longer calls setState. It mutates
@@ -251,9 +305,18 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
       if (zoomLayerRef.current) {
         // d3 rotate is degrees CCW from the prime meridian; SVG
         // rotate is degrees CW. Flip the sign.
+        //
+        // The scale MUST be included here: this runs every frame,
+        // so it overwrites whatever transform the mount effect or
+        // a pinch/wheel handler last wrote. Omitting it dropped the
+        // zoom and rendered the earth at BASE_SCALE (r=358 → 716px)
+        // inside a 390 px-wide mobile viewport, i.e. a cropped
+        // 2.2×-oversized globe. (Frank #7243 round-2 regression,
+        // caught by the mobile QA pass.)
+        const visual = globeScaleRef.current / BASE_SCALE;
         zoomLayerRef.current.setAttribute(
           'transform',
-          `rotate(${-nl})`,
+          `rotate(${-nl}) scale(${visual})`,
         );
       }
       raf = requestAnimationFrame(step);
@@ -509,7 +572,8 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
       const ratio = currentDistance / pinch.initialDistance;
       const base = globeScaleRef.current;
       const next = base * ratio;
-      const clamped = Math.max(MIN_SCALE, Math.min(MAX_SCALE, next));
+      const floor = Math.max(MIN_SCALE, fitScaleRef.current * 0.55);
+      const clamped = Math.max(floor, Math.min(MAX_SCALE, next));
       globeScaleRef.current = clamped;
       // Apply visually via the zoom-layer transform. No React state.
       if (zoomLayerRef.current) {
@@ -619,10 +683,8 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
   const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
     const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-    const next = Math.max(
-      MIN_SCALE,
-      Math.min(MAX_SCALE, globeScaleRef.current * factor),
-    );
+    const floor = Math.max(MIN_SCALE, fitScaleRef.current * 0.55);
+    const next = Math.max(floor, Math.min(MAX_SCALE, globeScaleRef.current * factor));
     globeScaleRef.current = next;
     if (zoomLayerRef.current) {
       const visual = next / BASE_SCALE;
@@ -642,10 +704,18 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
   const svgHeight = size.h;
 
   return (
-    <div className="relative h-full w-full select-none">
+    /* Frank #7243 round-2: the Globe fills its parent with
+       `absolute inset-0` instead of `h-full w-full`. The desktop
+       stage is a flex item (`flex-1`), so its height comes from
+       the flex layout and a child's `height: 100%` does not
+       resolve — clientHeight came back 0, the ResizeObserver never
+       fired with a real size, and the globe rendered at 0×0.
+       Absolute positioning fills the (already `relative`) parent
+       without depending on percentage-height resolution. */
+    <div className="absolute inset-0 select-none">
       <div
         ref={wrapperRef}
-        className="relative h-full w-full"
+        className="absolute inset-0"
           style={{
             touchAction: 'none',
             // Cursor reflects the active gesture, not the legacy
@@ -705,7 +775,18 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
               land). radius is the BASE_SCALE of the projection;
               the transform on the parent <g> handles the visual
               scale up/down. */}
-          <g ref={zoomLayerRef}>
+          <g
+            ref={zoomLayerRef}
+            /* Frank #7243 round-2: the initial transform is baked
+               into the SSR HTML so the first paint is already
+               correctly framed. Without it the earth rendered at
+               BASE_SCALE (r=358 → 716 px wide) inside a 390 px
+               mobile viewport until the mount effect ran — a
+               visibly cropped, 2.2×-oversized globe for the first
+               few hundred ms. The mount effect + the raf loop
+               overwrite this with the measured scale. */
+            transform={`rotate(0) scale(${INITIAL_VISUAL_SCALE})`}
+          >
             <circle
               r={BASE_SCALE - 2}
               fill="url(#oceanGrad)"

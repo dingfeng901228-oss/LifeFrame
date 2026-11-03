@@ -91,10 +91,17 @@ export function WelcomeBanner({ locale }: { locale: Locale }) {
       {/* Plain <a> (not Next <Link>) — a full page load here is
           intentional: the banner has a dismiss() side effect that
           would need to survive the navigation anyway. */}
+      {/* Frank #7243 round-2: this used to be a filled black pill
+          — the same weight as the hero's primary CTA, so the
+          homepage showed two competing primary buttons saying the
+          same thing ("开始记录" on mobile, "开始创建我的
+          LifeFrame" on desktop). Demote the banner's action to a
+          text link so the hero owns the primary CTA and the
+          banner stays a notice. */}
       <a
         href="/login"
         onClick={dismiss}
-        className="inline-flex min-h-[36px] flex-shrink-0 items-center rounded-full bg-black px-3 text-xs font-medium text-white transition hover:bg-black/90 dark:bg-white dark:text-black dark:hover:bg-white/90 sm:px-4 sm:text-sm"
+        className="inline-flex min-h-[36px] flex-shrink-0 items-center whitespace-nowrap rounded-full px-2 text-xs font-medium text-black underline decoration-black/25 underline-offset-4 transition hover:decoration-black/60 dark:text-white dark:decoration-white/25 dark:hover:decoration-white/60 sm:px-3 sm:text-sm"
       >
         {t(locale, 'welcome.cta')}
       </a>

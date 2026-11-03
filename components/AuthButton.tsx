@@ -210,7 +210,7 @@ export function AuthButton() {
         // /login?next=... and returns nothing useful. It cost
         // 1.2 s of bandwidth on the homepage for no benefit.
         prefetch={false}
-        className="rounded-full border border-black/15 px-4 py-1 text-xs text-black transition hover:border-black/40 hover:bg-black/5 dark:border-white/30 dark:text-white dark:hover:border-white/60 dark:hover:bg-white/5"
+        className="whitespace-nowrap rounded-full border border-black/15 px-3 py-1 text-xs text-black transition sm:px-4 hover:border-black/40 hover:bg-black/5 dark:border-white/30 dark:text-white dark:hover:border-white/60 dark:hover:bg-white/5"
       >
         {t(locale, 'auth.login')}
       </Link>

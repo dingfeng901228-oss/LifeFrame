@@ -29,7 +29,7 @@ export function HomeLogo() {
   return (
     <Link
       href={href}
-      className="flex items-center gap-2 text-lg font-medium tracking-wide hover:opacity-70 transition"
+      className="flex shrink-0 items-center gap-1.5 text-base font-medium tracking-wide hover:opacity-70 transition sm:gap-2 sm:text-lg"
     >
       <LifeFrameLogoMark
         size={24}

@@ -161,9 +161,15 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
       </head>
       <body className="min-h-screen antialiased">
-        <header className="relative z-10 flex items-center justify-between border-b border-[var(--border-primary)] bg-[var(--bg-primary)] px-6 py-4 text-[var(--text-primary)]">
+        {/* Frank #7243 round-2: the header overflowed at 390 px —
+            logo + language pills + theme toggle + login button +
+            gaps + padding came to ~462 px, so flex squeezed the
+            nav items until "中文" / "日本語" / "登录" each broke
+            onto two vertical lines. Tighten the mobile spacing
+            and stop the nav items from shrinking. */}
+        <header className="relative z-10 flex items-center justify-between gap-2 border-b border-[var(--border-primary)] bg-[var(--bg-primary)] px-3 py-4 text-[var(--text-primary)] sm:px-6">
           <HomeLogo />
-          <nav className="flex items-center gap-4 text-sm text-[var(--text-secondary)] sm:gap-6">
+          <nav className="flex shrink-0 items-center gap-2 text-sm text-[var(--text-secondary)] sm:gap-4 lg:gap-6">
             {/* Frank #7129 #1: removed the global-nav "上传" link.
                 Upload functionality moved into /admin/upload
                 (Frank #7117 #1 / commit 79fddee) and is reachable
