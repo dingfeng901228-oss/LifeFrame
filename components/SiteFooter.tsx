@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import {
-  SITE_AUTHOR,
   SITE_GITHUB_URL,
   SITE_NAME,
   SITE_URL,
@@ -31,10 +30,16 @@ import { LifeFrameLogoMark } from '@/components/LifeFrameLogo';
 export function SiteFooter({ locale }: { locale: Locale }) {
   return (
     <footer className="border-t border-black/10 dark:border-white/10">
-      <div className="mx-auto max-w-5xl px-6 py-10">
-        <div className="grid gap-8 md:grid-cols-3 md:gap-10">
+      {/* Frank #0906 round-15: the two columns sat at opposite ends
+          of a 3-column grid, ~450 px apart. The grid is now sized
+          to the content so the brand block and the link list read
+          as one band. The padding was also pulled in — the footer
+          used to add a full 96 px band of black below the feature
+          cards. */}
+      <div className="mx-auto max-w-5xl px-6 py-8">
+        <div className="grid gap-8 md:grid-cols-[minmax(0,18rem)_minmax(0,9rem)] md:gap-10">
           {/* Brand block */}
-          <div className="md:col-span-2">
+          <div>
             <div className="flex items-center gap-2">
               <LifeFrameLogoMark
                 size={28}
@@ -44,28 +49,30 @@ export function SiteFooter({ locale }: { locale: Locale }) {
                 {SITE_NAME}
               </p>
             </div>
-            <p className="mt-1 text-xs text-black/55 dark:text-white/55">
+            <p className="mt-1 text-xs text-black/75 dark:text-white/75">
               {t(locale, 'footer.brand.title')}
             </p>
-            <p className="mt-1 text-xs text-black/70 dark:text-white/70">
+            <p className="mt-1 text-xs text-black/80 dark:text-white/80">
               {t(locale, 'footer.brand.subtitle')}
             </p>
-            <p className="mt-3 text-xs text-black/70 dark:text-white/70">
-              © 2026 {SITE_AUTHOR} · {SITE_NAME}
+            {/* The copyright line is one translated string, so the
+                spaces around "·" can never collapse. */}
+            <p className="mt-3 text-xs text-black/80 dark:text-white/80">
+              {t(locale, 'footer.copyright')}
             </p>
             <p className="mt-1">
               <Link
                 href={SITE_URL}
-                className="text-xs text-black/70 transition hover:text-black dark:text-white/70 dark:hover:text-white"
+                className="text-xs text-black/80 transition hover:text-black dark:text-white/80 dark:hover:text-white"
               >
-                {SITE_URL}
+                {t(locale, 'footer.siteUrl')}
               </Link>
             </p>
           </div>
 
           {/* Links column */}
           <div>
-            <p className="text-xs uppercase tracking-wider text-black/70 dark:text-white/70">
+            <p className="text-xs uppercase tracking-wider text-black/80 dark:text-white/80">
               {/* Section label is the same in both locales — it's a
                   UI affordance, not content. */}
               <span aria-hidden="true">Links</span>
@@ -75,7 +82,7 @@ export function SiteFooter({ locale }: { locale: Locale }) {
                 <Link
                   href="/welcome"
                   prefetch={false}
-                  className="text-black/70 transition hover:text-black dark:text-white/70 dark:hover:text-white"
+                  className="text-black/80 transition hover:text-black dark:text-white/80 dark:hover:text-white"
                 >
                   {t(locale, 'footer.productIntro')}
                 </Link>
@@ -83,7 +90,7 @@ export function SiteFooter({ locale }: { locale: Locale }) {
               <li>
                 <a
                   href="mailto:dingfeng901112@gmail.com"
-                  className="text-black/70 transition hover:text-black dark:text-white/70 dark:hover:text-white"
+                  className="text-black/80 transition hover:text-black dark:text-white/80 dark:hover:text-white"
                 >
                   {t(locale, 'footer.contactDev')}
                 </a>
@@ -93,7 +100,7 @@ export function SiteFooter({ locale }: { locale: Locale }) {
                   href={SITE_GITHUB_URL}
                   target="_blank"
                   rel="noreferrer noopener"
-                  className="text-black/70 transition hover:text-black dark:text-white/70 dark:hover:text-white"
+                  className="text-black/80 transition hover:text-black dark:text-white/80 dark:hover:text-white"
                 >
                   {t(locale, 'footer.sources')} ↗
                 </a>
@@ -102,23 +109,18 @@ export function SiteFooter({ locale }: { locale: Locale }) {
           </div>
         </div>
 
-        {/* Privacy notice row — the previous version made this
-            look like just another inline link; now it's a dedicated
-            block with a 🔒 icon + tooltip explaining the actual
-            user-facing behavior (the toggle is in /admin/upload). */}
-        <div className="mt-8 flex items-start gap-2 rounded-md border border-black/10 bg-black/[0.02] px-3 py-2 text-xs text-black/70 dark:border-white/10 dark:bg-white/[0.02] dark:text-white/70">
+        {/* Privacy notice row — a dedicated block, plus the
+            explanation as ALWAYS-VISIBLE small text. It used to
+            live in a ⓘ hover tooltip, so on a phone (and for
+            anyone who does not hover) the actual behaviour was
+            invisible. */}
+        <div className="mt-6 flex items-start gap-2 rounded-md border border-black/15 bg-black/[0.02] px-3 py-2 text-xs text-black/80 dark:border-white/15 dark:bg-white/[0.02] dark:text-white/80">
           <span aria-hidden="true">🔒</span>
-          <p>
-            {t(locale, 'footer.tagline')}
-            <span
-              className="ml-2 cursor-help text-black/70 dark:text-white/70"
-              title={t(locale, 'footer.privacy.tooltip')}
-              aria-label={t(locale, 'footer.privacy.tooltip')}
-            >
-              ⓘ
-            </span>
-          </p>
+          <p>{t(locale, 'footer.tagline')}</p>
         </div>
+        <p className="mt-1.5 text-[11px] leading-relaxed text-black/75 dark:text-white/75">
+          {t(locale, 'footer.privacy.tooltip')}
+        </p>
       </div>
     </footer>
   );

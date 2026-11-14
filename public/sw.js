@@ -10,7 +10,10 @@
 // realtime data needed for the cached page) round out the
 // shell. /timeline and /photos/[id] still require network
 // because they have dynamic data that should be fresh.
-const VERSION = 'v5';
+// Frank #0906 round-15: bumped because the home page's HTML/JS
+// changed (new timeline scale, rebuilt feature cards). Without the
+// bump the old shell-v5 copy of "/" would be served from cache.
+const VERSION = 'v6';
 const SHELL_CACHE = `shell-${VERSION}`;
 const RUNTIME_CACHE = `runtime-${VERSION}`;
 const PRECACHE_URLS = ['/', '/welcome', '/stats'];

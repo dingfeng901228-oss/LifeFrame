@@ -106,7 +106,7 @@ export function SearchBox({
           role="combobox"
           aria-controls={dropdownId}
           aria-expanded={showDropdown}
-          className="min-h-[44px] w-full rounded-full border border-black/15 dark:border-white/15 bg-white/90 dark:bg-white/5 px-4 pr-20 text-sm text-black dark:text-white placeholder-black/40 dark:placeholder-white/40 focus:border-black/40 dark:focus:border-white/40 focus:outline-none"
+          className="min-h-[44px] w-full rounded-full border border-black/15 dark:border-white/15 bg-white/90 dark:bg-white/5 px-4 pr-20 text-sm text-black dark:text-white placeholder-black/60 dark:placeholder-white/60 focus:border-black/40 dark:focus:border-white/40 focus:outline-none"
         />
         {/* Right-side cluster: live match counter + clear button.
             Counter is always visible; clear button only when the
@@ -136,7 +136,7 @@ export function SearchBox({
         {/* "/" hint when input is empty — fades on focus so it
             doesn't distract the user once they're typing. */}
         {!hasQuery && (
-          <kbd className="pointer-events-none absolute inset-y-0 right-3 my-auto inline-flex h-6 items-center rounded border border-black/15 px-1.5 text-[10px] font-medium text-black/55 dark:border-white/15 dark:text-white/60">
+          <kbd className="pointer-events-none absolute inset-y-0 right-3 my-auto inline-flex h-6 items-center rounded border border-black/20 px-1.5 text-[10px] font-medium text-black/70 dark:border-white/20 dark:text-white/75">
             /
           </kbd>
         )}

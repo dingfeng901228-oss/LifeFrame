@@ -1,46 +1,69 @@
+import { geoOrthographic, geoPath } from 'd3-geo';
+import type { Feature, Geometry } from 'geojson';
+import countriesGeo from '@/lib/countries';
 import { t, type Locale } from '@/lib/i18n';
+import { photoImageUrl } from '@/lib/photo-url';
+import type { PhotoStats, PhotoStatRow, PlaceStat } from '@/lib/photo-stats';
+import { buildScaleFromYears } from '@/lib/timeline-scale';
+
+/**
+ * Frank #0906 round-15: the three feature-card mock-ups.
+ *
+ * They used to be hand-drawn SVGs made of flat colour blocks with
+ * hard-coded numbers ("7 地点 · 224 张照片", four tiles all dated
+ * "2013.03"), which is exactly the kind of thing that drifts out
+ * of sync with the real archive. Now every mock-up is built from
+ * the SAME photo rows as the hero (`stats`), so:
+ *
+ *   - the numbers are real (one query, one aggregation),
+ *   - the pictures are real photos served through the app's own
+ *     image proxy,
+ *   - the dates and places on the chips are the photos' real EXIF
+ *     values,
+ *   - the mini-globe is a genuine orthographic projection of the
+ *     real coordinates over the real coastline data.
+ *
+ * The mock-ups are plain HTML (not SVG) so nothing can be clipped
+ * by a viewBox edge — that was the "0.5×" pill running off the
+ * right edge of card 1 and card 3's caption sitting on the bottom
+ * border.
+ */
 
 type FeatureKey = 'timeTravel' | 'lifeJourney' | 'autoOrganize';
 
-/**
- * Frank #0906 round-13 (P2 #9): features section upgrade.
- *
- * The original features section was three tiny cards with an
- * emoji + title + a one-line body. P2 #9 asked for real
- * screenshots / demos — Frank didn't want to manage per-page
- * screenshot assets, so this renders three inline SVG mockups
- * that show what the feature actually looks like.
- *
- *   - timeTravel: a video-player timeline with cyan playhead
- *     and three photo thumbnails appearing as the year
- *     progresses (1990 → 2026).
- *   - lifeJourney: a stylized globe with 7 photo markers
- *     clustered around the user's photo locations.
- *   - autoOrganize: a 4-cell upload grid where each photo
- *     gets an auto-tagged chip (📍 Beijing, 📷 Canon, 🌳
- *     Scenery) — what the EXIF pipeline produces on upload.
- *
- * All three are pure SVG, no JS animation, dark-mode-aware.
- * Light-mode colors: black/dark gray. Dark-mode colors: white
- * / light gray via Tailwind `dark:` variants.
- */
-export function FeaturesGrid({ locale }: { locale: Locale }) {
+export function FeaturesGrid({
+  locale,
+  stats,
+}: {
+  locale: Locale;
+  stats: PhotoStats;
+}) {
   return (
     <div className="grid gap-6 md:grid-cols-3">
       <FeatureCard
         locale={locale}
         featureKey="timeTravel"
-        demo={<TimeTravelDemo />}
+        stat={
+          stats.firstYear && stats.lastYear
+            ? `${stats.firstYear}–${stats.lastYear}`
+            : null
+        }
+        demo={<TimeTravelDemo locale={locale} stats={stats} />}
       />
       <FeatureCard
         locale={locale}
         featureKey="lifeJourney"
-        demo={<LifeJourneyDemo />}
+        stat={t(locale, 'features.demo.summary', {
+          count: stats.totalPhotos,
+          places: stats.totalPlaces,
+        })}
+        demo={<LifeJourneyDemo locale={locale} stats={stats} />}
       />
       <FeatureCard
         locale={locale}
         featureKey="autoOrganize"
-        demo={<AutoOrganizeDemo />}
+        stat={t(locale, 'features.demo.exif')}
+        demo={<AutoOrganizeDemo locale={locale} stats={stats} />}
       />
     </div>
   );
@@ -49,10 +72,12 @@ export function FeaturesGrid({ locale }: { locale: Locale }) {
 function FeatureCard({
   locale,
   featureKey,
+  stat,
   demo,
 }: {
   locale: Locale;
   featureKey: FeatureKey;
+  stat: string | null;
   demo: React.ReactNode;
 }) {
   const title = t(
@@ -69,39 +94,40 @@ function FeatureCard({
       | 'features.lifeJourney.body'
       | 'features.autoOrganize.body',
   );
-  const demoLabel = t(locale, `features.${featureKey}.demoLabel` as
-    | 'features.timeTravel.demoLabel'
-    | 'features.lifeJourney.demoLabel'
-    | 'features.autoOrganize.demoLabel');
   const icon = {
     timeTravel: '⏳',
     lifeJourney: '🌏',
     autoOrganize: '📷',
   }[featureKey];
   return (
-    <article className="overflow-hidden rounded-lg border border-black/10 bg-black/[0.02] dark:border-white/10 dark:bg-white/[0.02]">
+    <article className="flex flex-col overflow-hidden rounded-lg border border-black/10 bg-black/[0.02] dark:border-white/10 dark:bg-white/[0.02]">
       <div className="border-b border-black/10 bg-black/[0.04] px-4 py-3 dark:border-white/10 dark:bg-white/[0.04]">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
             <span className="text-2xl" aria-hidden="true">
               {icon}
             </span>
-            <h3 className="text-base font-medium text-black dark:text-white">
+            <h3 className="truncate text-base font-medium text-black dark:text-white">
               {title}
             </h3>
           </div>
-          <span className="text-[10px] uppercase tracking-wider text-black/70 dark:text-white/70">
-            {demoLabel}
-          </span>
+          {/* Frank #0906 round-15: the "DEMO" badge is gone — the
+              card now shows what the feature actually holds, read
+              from the same data as the hero. */}
+          {stat && (
+            <span className="shrink-0 text-[11px] tabular-nums text-black/75 dark:text-white/80">
+              {stat}
+            </span>
+          )}
         </div>
       </div>
-      {/* SVG demo frame — fixed 16:10 aspect ratio so all three
+      {/* Mock-up frame — fixed 16:10 aspect ratio so all three
           cards line up regardless of the inner content. */}
       <div className="aspect-[16/10] w-full overflow-hidden bg-white dark:bg-black">
         {demo}
       </div>
       <div className="p-5">
-        <p className="text-sm leading-relaxed text-black/70 dark:text-white/75">
+        <p className="text-sm leading-relaxed text-black/80 dark:text-white/85">
           {body}
         </p>
       </div>
@@ -109,439 +135,440 @@ function FeatureCard({
   );
 }
 
-// ─── Demo 1: Time Travel timeline ──────────────────────────────────────
-
-function TimeTravelDemo() {
+/** Mini "app window" chrome used by all three mock-ups. */
+function DemoChrome({
+  title,
+  right,
+}: {
+  title: string;
+  right?: string | null;
+}) {
   return (
-    <svg
-      viewBox="0 0 320 200"
-      className="h-full w-full"
-      role="img"
-      aria-label="Time Travel demo"
-    >
-      {/* Mini "browser" window header */}
-      <rect x="0" y="0" width="320" height="22" className="fill-black/5 dark:fill-white/5" />
-      <circle cx="10" cy="11" r="3" className="fill-rose-400/70" />
-      <circle cx="20" cy="11" r="3" className="fill-amber-400/70" />
-      <circle cx="30" cy="11" r="3" className="fill-emerald-400/70" />
-      <text
-        x="160"
-        y="14"
-        textAnchor="middle"
-        fontSize="9"
-        className="fill-black/50 dark:fill-white/50"
-      >
-        TimeTravel · 1990 → 2026
-      </text>
-      {/* Year labels at top */}
-      <text
-        x="20"
-        y="38"
-        fontSize="8"
-        className="fill-black/40 dark:fill-white/40"
-      >
-        1990
-      </text>
-      <text
-        x="300"
-        y="38"
-        fontSize="8"
-        textAnchor="end"
-        className="fill-black/40 dark:fill-white/40"
-      >
-        2026
-      </text>
-      {/* Cyan range overlay (selected window) */}
-      <rect
-        x="140"
-        y="46"
-        width="100"
-        height="10"
-        rx="5"
-        className="fill-cyan-500/30 dark:fill-cyan-400/30"
-      />
-      {/* Timeline bar */}
-      <rect
-        x="20"
-        y="48"
-        width="280"
-        height="6"
-        rx="3"
-        className="fill-black/10 dark:fill-white/15"
-      />
-      {/* Photo chapter ticks */}
-      {(
-        [
-          [40, 1992],
-          [70, 1996],
-          [110, 2002],
-          [155, 2008],
-          [195, 2013],
-          [230, 2017],
-          [270, 2022],
-        ] as Array<[number, number]>
-      ).map(([x, year]) => (
-        <line
-          key={year}
-          x1={x}
-          y1="46"
-          x2={x}
-          y2="56"
-          strokeWidth="1.5"
-          className="stroke-cyan-600/80 dark:stroke-cyan-400/80"
+    <div className="flex shrink-0 items-center justify-between gap-2 border-b border-black/10 px-2.5 py-1 dark:border-white/10">
+      <div className="flex min-w-0 items-center gap-1.5">
+        <span
+          aria-hidden="true"
+          className="h-1.5 w-1.5 shrink-0 rounded-full bg-rose-400/80"
         />
-      ))}
-      {/* Playhead */}
-      <circle
-        cx="190"
-        cy="51"
-        r="5"
-        className="fill-cyan-500 dark:fill-cyan-400"
-      />
-      {/* Date label above playhead */}
-      <text
-        x="190"
-        y="72"
-        textAnchor="middle"
-        fontSize="9"
-        className="fill-black/70 dark:fill-white/70"
-      >
-        2013.03
-      </text>
-      {/* Three photo thumbnails popping up above the bar */}
-      {[150, 190, 230].map((x, i) => (
-        <g key={i}>
-          <rect
-            x={x - 14}
-            y="86"
-            width="28"
-            height="28"
-            rx="3"
-            className="fill-black/10 stroke-black/15 dark:fill-white/10 dark:stroke-white/20"
-          />
-          {/* Stylized photo content */}
-          <rect
-            x={x - 12}
-            y="88"
-            width="24"
-            height="20"
-            rx="2"
-            className={
-              i === 0
-                ? 'fill-amber-300/70 dark:fill-amber-500/40'
-                : i === 1
-                  ? 'fill-emerald-300/70 dark:fill-emerald-500/40'
-                  : 'fill-sky-300/70 dark:fill-sky-500/40'
-            }
-          />
-        </g>
-      ))}
-      {/* Playback row at bottom */}
-      <g transform="translate(0,160)">
-        <circle cx="160" cy="0" r="11" className="fill-black dark:fill-white" />
-        <polygon
-          points="156,-5 156,5 166,0"
-          className="fill-white dark:fill-black"
+        <span
+          aria-hidden="true"
+          className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400/80"
         />
-        <text
-          x="20"
-          y="3"
-          fontSize="8"
-          className="fill-black/50 dark:fill-white/50"
-        >
-          ⏮
-        </text>
-        <text
-          x="300"
-          y="3"
-          textAnchor="end"
-          fontSize="8"
-          className="fill-black/50 dark:fill-white/50"
-        >
-          ⏭
-        </text>
-        {/* Speed pills */}
-        <g transform="translate(220,-12)">
-          <rect
-            width="80"
-            height="20"
-            rx="10"
-            className="fill-black/5 dark:fill-white/10"
-          />
-          <rect
-            x="2"
-            y="2"
-            width="18"
-            height="16"
-            rx="8"
-            className="fill-black dark:fill-white"
-          />
-          <text
-            x="11"
-            y="14"
-            textAnchor="middle"
-            fontSize="8"
-            className="fill-white dark:fill-black"
-          >
-            1×
-          </text>
-          <text
-            x="30"
-            y="14"
-            fontSize="8"
-            className="fill-black/55 dark:fill-white/55"
-          >
-            2×
-          </text>
-          <text
-            x="49"
-            y="14"
-            fontSize="8"
-            className="fill-black/55 dark:fill-white/55"
-          >
-            4×
-          </text>
-          <text
-            x="68"
-            y="14"
-            fontSize="8"
-            className="fill-black/55 dark:fill-white/55"
-          >
-            0.5×
-          </text>
-        </g>
-      </g>
-    </svg>
+        <span
+          aria-hidden="true"
+          className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400/80"
+        />
+        <span className="truncate text-[10px] text-black/75 dark:text-white/85">
+          {title}
+        </span>
+      </div>
+      {right && (
+        <span className="shrink-0 text-[10px] tabular-nums text-black/75 dark:text-white/85">
+          {right}
+        </span>
+      )}
+    </div>
   );
 }
 
-// ─── Demo 2: Life Journey globe ───────────────────────────────────────
+// ─── Demo 1: Time Travel ───────────────────────────────────────────
 
-function LifeJourneyDemo() {
+function TimeTravelDemo({
+  locale,
+  stats,
+}: {
+  locale: Locale;
+  stats: PhotoStats;
+}) {
+  const hero = stats.demo.hero;
+  const strip = stats.demo.strip;
+  const heroDate = hero ? formatDotDate(hero) : null;
+  const heroPlace = hero ? cityLabel(hero) : null;
+
+  // The mini-track uses the SAME scale as the real timeline
+  // (lib/timeline-scale.ts): the years the archive has photos in,
+  // with the empty stretches compressed. A linear year axis here
+  // would show the very "two thirds empty" problem the real
+  // timeline was fixed for.
+  const miniScale = buildScaleFromYears(
+    stats.years.map((y) => y.year),
+    new Date(),
+  );
+  const marks = stats.years.map((y) => ({
+    year: y.year,
+    pos: miniScale.positionFor(new Date(y.year, 0, 1)),
+  }));
+  const playheadPos = hero
+    ? miniScale.positionFor(new Date(hero.taken_at || hero.created_at))
+    : 100;
+
   return (
-    <svg
-      viewBox="0 0 320 200"
-      className="h-full w-full"
-      role="img"
-      aria-label="Life Journey demo"
-    >
-      {/* Mini "browser" window header */}
-      <rect x="0" y="0" width="320" height="22" className="fill-black/5 dark:fill-white/5" />
-      <circle cx="10" cy="11" r="3" className="fill-rose-400/70" />
-      <circle cx="20" cy="11" r="3" className="fill-amber-400/70" />
-      <circle cx="30" cy="11" r="3" className="fill-emerald-400/70" />
-      <text
-        x="160"
-        y="14"
-        textAnchor="middle"
-        fontSize="9"
-        className="fill-black/50 dark:fill-white/50"
-      >
-        LifeJourney · 7 地点 · 224 张照片
-      </text>
-      {/* Globe outline */}
-      <circle
-        cx="160"
-        cy="120"
-        r="70"
-        className="fill-black/[0.04] stroke-black/20 dark:fill-white/[0.06] dark:stroke-white/25"
-        strokeWidth="1"
+    <div className="flex h-full flex-col text-black dark:text-white">
+      <DemoChrome
+        title={t(locale, 'features.timeTravel.title')}
+        right={heroDate}
       />
-      {/* Latitude/longitude grid */}
-      <ellipse
-        cx="160"
-        cy="120"
-        rx="70"
-        ry="22"
-        className="fill-none stroke-black/15 dark:stroke-white/20"
-        strokeWidth="0.5"
+      <div className="flex min-h-0 flex-1 gap-2 p-2.5">
+        {/* The photo currently "on screen". */}
+        <div className="relative min-w-0 flex-1 overflow-hidden rounded bg-black/10 dark:bg-white/5">
+          {hero ? (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={photoImageUrl(hero, '256')}
+                alt={hero.filename}
+                loading="lazy"
+                decoding="async"
+                className="h-full w-full object-cover"
+              />
+              <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/85 to-transparent px-1.5 pt-3 pb-1 text-[9px] leading-tight text-white">
+                {heroDate}
+                {heroPlace ? ` · ${heroPlace}` : ''}
+              </span>
+            </>
+          ) : (
+            <div className="flex h-full items-center justify-center text-[10px] text-black/60 dark:text-white/75">
+              —
+            </div>
+          )}
+        </div>
+        {/* The chapter strip — one real photo per year. */}
+        <div className="flex w-[38%] shrink-0 flex-col gap-1">
+          {strip.length === 0 && (
+            <div className="flex flex-1 items-center justify-center text-[10px] text-black/60 dark:text-white/75">
+              —
+            </div>
+          )}
+          {strip.map((p) => (
+            <div key={p.id} className="flex min-h-0 flex-1 items-center gap-1.5">
+              <div className="relative h-full min-h-0 w-12 shrink-0 overflow-hidden rounded bg-black/10 dark:bg-white/5">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={photoImageUrl(p, '256')}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  className="h-full w-full object-cover"
+                />
+              </div>
+              <span className="truncate text-[9px] tabular-nums text-black/75 dark:text-white/85">
+                {String(new Date(p.taken_at || p.created_at).getFullYear())}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+      {/* Mini transport: real year marks + the speed pills. Both
+          live inside the frame's padding, so nothing is clipped. */}
+      <div className="flex shrink-0 items-center gap-2 border-t border-black/10 px-2.5 py-1.5 dark:border-white/10">
+        <div className="relative h-4 min-w-0 flex-1">
+          <div className="absolute inset-x-0 top-1 h-0.5 rounded-full bg-black/15 dark:bg-white/20" />
+          {marks.map((m) => (
+            <span
+              key={m.year}
+              className="absolute top-0.5 h-2 w-px bg-black/40 dark:bg-white/50"
+              style={{ left: `${m.pos}%` }}
+            />
+          ))}
+          {/* The playhead sits on the newest photo. */}
+          <span
+            className="absolute top-0 h-2.5 w-2.5 -translate-x-1/2 rounded-full bg-cyan-500 ring-2 ring-white/60 dark:bg-cyan-400 dark:ring-black/50"
+            style={{ left: `${playheadPos}%` }}
+          />
+        </div>
+        <div className="flex shrink-0 items-center gap-0.5 rounded-full border border-black/20 p-0.5 dark:border-white/25">
+          {['0.5×', '1×', '2×', '4×'].map((s) => (
+            <span
+              key={s}
+              className={`rounded-full px-1.5 py-0.5 text-[9px] leading-none ${
+                s === '1×'
+                  ? 'bg-black text-white dark:bg-white dark:text-black'
+                  : 'text-black/75 dark:text-white/80'
+              }`}
+            >
+              {s}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Demo 2: Life Journey ──────────────────────────────────────────
+
+/** How many places the mock-up lists. */
+const DEMO_PLACES = 7;
+
+/** Mini-globe geometry. */
+const MINI_R = 56;
+const MINI_SIZE = MINI_R * 2 + 6;
+
+/**
+ * Country outlines for the mini-globe, memoised per globe centre.
+ * The projection is the same orthographic one the real globe uses,
+ * so the mock-up is a true miniature of the app's globe.
+ */
+const miniPathCache = new Map<
+  string,
+  Array<{ id: string | number; d: string }>
+>();
+
+function miniGlobePaths(centerLng: number, centerLat: number) {
+  const key = `${centerLng.toFixed(1)},${centerLat.toFixed(1)}`;
+  const hit = miniPathCache.get(key);
+  if (hit) return hit;
+  const projection = geoOrthographic()
+    // Negated: d3 rotates the globe, so rotate([-lng, -lat]) puts
+    // the point (lng, lat) at the centre of the disc.
+    .rotate([-centerLng, -centerLat])
+    .scale(MINI_R)
+    .translate([MINI_SIZE / 2, MINI_SIZE / 2])
+    .clipAngle(90)
+    .precision(0.5);
+  const pathFn = geoPath(projection);
+  const out: Array<{ id: string | number; d: string }> = [];
+  countriesGeo.features.forEach((f: Feature<Geometry, any>, i: number) => {
+    const d = pathFn(f as any);
+    if (d) out.push({ id: (f.id as string | number | undefined) ?? i, d });
+  });
+  miniPathCache.set(key, out);
+  return out;
+}
+
+function LifeJourneyDemo({
+  locale,
+  stats,
+}: {
+  locale: Locale;
+  stats: PhotoStats;
+}) {
+  const places = stats.places.slice(0, DEMO_PLACES);
+  const [lng, lat] = stats.center;
+  const paths = miniGlobePaths(lng, lat);
+
+  // Marker positions for the listed places (real coordinates).
+  const projection = geoOrthographic()
+    .rotate([-lng, -lat])
+    .scale(MINI_R)
+    .translate([MINI_SIZE / 2, MINI_SIZE / 2])
+    .clipAngle(90)
+    .precision(0.5);
+  const markers = places
+    .filter((p) => p.lat != null && p.lng != null)
+    .map((p) => {
+      const xy = projection([p.lng as number, p.lat as number]);
+      return { place: p, xy };
+    })
+    .filter((m): m is { place: PlaceStat; xy: [number, number] } => Boolean(m.xy));
+
+  // The real globe merges markers that sit close together into one
+  // count badge. The mock-up does the same, otherwise the badges
+  // for two neighbouring cities would sit on top of each other.
+  const clusters: Array<{ key: string; x: number; y: number; count: number }> = [];
+  for (const m of markers) {
+    const hit = clusters.find(
+      (c) => Math.hypot(c.x - m.xy[0], c.y - m.xy[1]) < 9,
+    );
+    if (hit) {
+      hit.count += m.place.count;
+    } else {
+      clusters.push({
+        key: m.place.key,
+        x: m.xy[0],
+        y: m.xy[1],
+        count: m.place.count,
+      });
+    }
+  }
+
+  return (
+    <div className="flex h-full flex-col text-black dark:text-white">
+      <DemoChrome
+        title={t(locale, 'features.lifeJourney.title')}
+        right={t(locale, 'features.demo.summary', {
+          count: stats.totalPhotos,
+          places: stats.totalPlaces,
+        })}
       />
-      <ellipse
-        cx="160"
-        cy="120"
-        rx="70"
-        ry="44"
-        className="fill-none stroke-black/15 dark:stroke-white/20"
-        strokeWidth="0.5"
-      />
-      <line
-        x1="90"
-        y1="120"
-        x2="230"
-        y2="120"
-        className="stroke-black/15 dark:stroke-white/20"
-        strokeWidth="0.5"
-      />
-      <line
-        x1="160"
-        y1="50"
-        x2="160"
-        y2="190"
-        className="stroke-black/15 dark:stroke-white/20"
-        strokeWidth="0.5"
-      />
-      {/* Stylized continents — three abstract blobs so the SVG
-          doesn't try to render real cartography */}
-      <path
-        d="M120 95 Q130 85 145 90 Q155 95 150 110 Q140 120 125 115 Q115 105 120 95Z"
-        className="fill-black/15 dark:fill-white/25"
-      />
-      <path
-        d="M170 105 Q190 100 205 115 Q200 135 180 130 Q165 120 170 105Z"
-        className="fill-black/15 dark:fill-white/25"
-      />
-      <path
-        d="M105 140 Q120 135 130 150 Q125 165 110 162 Q98 152 105 140Z"
-        className="fill-black/15 dark:fill-white/25"
-      />
-      {/* Photo markers (cyan dots, with cluster badge variation) */}
-      {(
-        [
-          [120, 100, 1, 'Tokyo'],
-          [145, 95, 47, 'Beijing'],
-          [185, 115, 1, 'Seoul'],
-          [200, 120, 1, 'Shenzhen'],
-          [115, 150, 12, 'Hong Kong'],
-          [170, 145, 1, 'Taipei'],
-          [195, 140, 3, 'Osaka'],
-        ] as Array<[number, number, number, string]>
-      ).map(([x, y, count, label]) => {
-        const isCluster = count > 1;
-        return (
-          <g key={label}>
-            {isCluster ? (
-              <>
+      <div className="flex min-h-0 flex-1 items-center gap-2 p-2">
+        {/* Mini globe — real projection, real coastline, real
+            markers. */}
+        <div
+          className="relative shrink-0"
+          style={{ width: MINI_SIZE, height: MINI_SIZE }}
+        >
+          <svg
+            viewBox={`0 0 ${MINI_SIZE} ${MINI_SIZE}`}
+            width={MINI_SIZE}
+            height={MINI_SIZE}
+            role="img"
+            aria-label={t(locale, 'features.lifeJourney.title')}
+            className="block"
+          >
+            <defs>
+              <radialGradient id="miniOcean" cx="38%" cy="35%" r="75%">
+                <stop offset="0%" stopColor="var(--ocean-light)" />
+                <stop offset="65%" stopColor="var(--ocean-mid)" />
+                <stop offset="100%" stopColor="var(--ocean-dark)" />
+              </radialGradient>
+            </defs>
+            <circle
+              cx={MINI_SIZE / 2}
+              cy={MINI_SIZE / 2}
+              r={MINI_R}
+              fill="url(#miniOcean)"
+              stroke="var(--accent)"
+              strokeOpacity={0.45}
+              strokeWidth={1}
+            />
+            {paths.map((c) => (
+              <path
+                key={c.id}
+                d={c.d}
+                fill="var(--country-fill)"
+                stroke="var(--country-stroke)"
+                strokeWidth={0.7}
+              />
+            ))}
+            {clusters.map((c) => (
+              <g key={c.key}>
                 <circle
-                  cx={x}
-                  cy={y}
-                  r="8"
-                  className="fill-cyan-500 dark:fill-cyan-400"
+                  cx={c.x}
+                  cy={c.y}
+                  r={6}
+                  fill="var(--accent-soft)"
+                  pointerEvents="none"
+                />
+                <circle
+                  cx={c.x}
+                  cy={c.y}
+                  r={4}
+                  fill="var(--accent)"
+                  fillOpacity={0.5}
+                  stroke="var(--marker-stroke)"
+                  strokeWidth={0.8}
+                  pointerEvents="none"
                 />
                 <text
-                  x={x}
-                  y={y + 3}
+                  x={c.x}
+                  y={c.y}
                   textAnchor="middle"
-                  fontSize="8"
+                  dy="0.35em"
+                  fontSize={5.5}
                   fontWeight="bold"
-                  className="fill-white dark:fill-black"
+                  fill="var(--bg-primary)"
+                  pointerEvents="none"
                 >
-                  {count}
+                  {c.count}
                 </text>
-              </>
-            ) : (
-              <circle
-                cx={x}
-                cy={y}
-                r="4"
-                className="fill-cyan-500 dark:fill-cyan-400"
-              />
-            )}
-            <text
-              x={x}
-              y={y - 12}
-              textAnchor="middle"
-              fontSize="7"
-              className="fill-black/65 dark:fill-white/65"
+              </g>
+            ))}
+          </svg>
+        </div>
+        {/* The place list — one row per place, each with its own
+            photo count. No overlapping labels: the names live in
+            a list, not on top of the globe. */}
+        <ul className="flex min-w-0 flex-1 flex-col justify-between gap-0.5">
+          {places.length === 0 && (
+            <li className="text-[10px] text-black/70 dark:text-white/80">—</li>
+          )}
+          {places.map((p) => (
+            <li
+              key={p.key}
+              className="flex min-w-0 items-center gap-1.5 text-[10px]"
             >
-              {label}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
+              <span
+                aria-hidden="true"
+                className="h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-500 dark:bg-cyan-400"
+              />
+              <span className="min-w-0 flex-1 truncate text-black/85 dark:text-white/90">
+                {p.name}
+              </span>
+              <span className="shrink-0 tabular-nums text-black/75 dark:text-white/80">
+                {p.count}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
   );
 }
 
-// ─── Demo 3: Auto Organize EXIF pipeline ──────────────────────────────
+// ─── Demo 3: Auto Organize ─────────────────────────────────────────
 
-function AutoOrganizeDemo() {
+function AutoOrganizeDemo({
+  locale,
+  stats,
+}: {
+  locale: Locale;
+  stats: PhotoStats;
+}) {
+  const tiles = stats.demo.grid;
   return (
-    <svg
-      viewBox="0 0 320 200"
-      className="h-full w-full"
-      role="img"
-      aria-label="Auto Organize demo"
-    >
-      {/* Mini "browser" window header */}
-      <rect x="0" y="0" width="320" height="22" className="fill-black/5 dark:fill-white/5" />
-      <circle cx="10" cy="11" r="3" className="fill-rose-400/70" />
-      <circle cx="20" cy="11" r="3" className="fill-amber-400/70" />
-      <circle cx="30" cy="11" r="3" className="fill-emerald-400/70" />
-      <text
-        x="160"
-        y="14"
-        textAnchor="middle"
-        fontSize="9"
-        className="fill-black/50 dark:fill-white/50"
-      >
-        Auto-Organize · EXIF + GPS
-      </text>
-      {/* 2×2 photo grid */}
-      {(
-        [
-          [40, 40, 'fill-amber-300/70 dark:fill-amber-500/40', 'beijing'],
-          [170, 40, 'fill-emerald-300/70 dark:fill-emerald-500/40', 'tokyo'],
-          [40, 130, 'fill-sky-300/70 dark:fill-sky-500/40', 'shenzhen'],
-          [170, 130, 'fill-fuchsia-300/70 dark:fill-fuchsia-500/40', 'osaka'],
-        ] as Array<[number, number, string, string]>
-      ).map(([x, y, color, loc]) => (
-        <g key={loc}>
-          <rect
-            x={x}
-            y={y}
-            width="110"
-            height="80"
-            rx="6"
-            className={`${color} stroke-black/10 dark:stroke-white/10`}
-          />
-          {/* Auto-tag chips below the photo */}
-          <g transform={`translate(${x}, ${y + 84})`}>
-            {/* Location chip */}
-            <rect
-              width="60"
-              height="14"
-              rx="7"
-              className="fill-black/5 dark:fill-white/10"
-            />
-            <text
-              x="30"
-              y="10"
-              textAnchor="middle"
-              fontSize="7"
-              className="fill-black/70 dark:fill-white/70"
+    <div className="flex h-full flex-col text-black dark:text-white">
+      <DemoChrome
+        title={t(locale, 'features.autoOrganize.title')}
+        right={t(locale, 'features.demo.exif')}
+      />
+      <div className="grid min-h-0 flex-1 grid-cols-2 gap-1.5 p-2">
+        {tiles.length === 0 && (
+          <div className="col-span-2 flex items-center justify-center text-[10px] text-black/70 dark:text-white/80">
+            —
+          </div>
+        )}
+        {tiles.map((p) => {
+          const date = formatDotDate(p);
+          const place = cityLabel(p);
+          return (
+            <div
+              key={p.id}
+              className="relative min-h-0 overflow-hidden rounded bg-black/10 dark:bg-white/5"
             >
-              📍 {loc}
-            </text>
-            {/* Date chip */}
-            <rect
-              x="62"
-              width="48"
-              height="14"
-              rx="7"
-              className="fill-black/5 dark:fill-white/10"
-            />
-            <text
-              x="86"
-              y="10"
-              textAnchor="middle"
-              fontSize="7"
-              className="fill-black/70 dark:fill-white/70"
-            >
-              📅 2013.03
-            </text>
-          </g>
-        </g>
-      ))}
-      {/* Bottom annotation */}
-      <text
-        x="160"
-        y="195"
-        textAnchor="middle"
-        fontSize="7"
-        className="fill-black/40 dark:fill-white/40"
-      >
-        自动读取 · EXIF 拍摄时间 + GPS + 相机
-      </text>
-    </svg>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={photoImageUrl(p, '256')}
+                alt={p.filename}
+                loading="lazy"
+                decoding="async"
+                className="h-full w-full object-cover"
+              />
+              {/* The auto-tag chips: the photo's real place and its
+                  real EXIF date. */}
+              <div className="absolute inset-x-0 bottom-0 flex flex-wrap items-center gap-1 bg-gradient-to-t from-black/90 to-transparent px-1 pt-3 pb-0.5">
+                <span className="max-w-[58%] truncate rounded-full bg-white/25 px-1.5 py-px text-[8px] leading-[1.3] text-white">
+                  📍 {place}
+                </span>
+                <span className="rounded-full bg-white/25 px-1.5 py-px text-[8px] leading-[1.3] tabular-nums text-white">
+                  📅 {date}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {/* Caption — sits inside the frame with its own padding so it
+          can never touch the bottom edge. */}
+      <p className="shrink-0 px-2.5 pb-1.5 text-[9px] leading-tight text-black/75 dark:text-white/85">
+        {t(locale, 'features.demo.exifNote')}
+      </p>
+    </div>
   );
+}
+
+// ─── helpers ───────────────────────────────────────────────────────
+
+/** "2013.05" — the photo's own date. */
+function formatDotDate(p: PhotoStatRow): string {
+  const d = new Date(p.taken_at || p.created_at);
+  if (Number.isNaN(d.getTime())) return '—';
+  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** The photo's city (first segment of the location string). */
+function cityLabel(p: PhotoStatRow): string {
+  const raw = (p.location_name ?? '').trim();
+  if (!raw) return '—';
+  return raw.split(',')[0].trim();
 }

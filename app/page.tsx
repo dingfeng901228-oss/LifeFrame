@@ -5,6 +5,7 @@ import { SiteFooter } from '@/components/SiteFooter';
 import { FeaturesGrid } from '@/components/FeaturesGrid';
 import { getLocale } from '@/lib/i18n-server';
 import { t, type Locale } from '@/lib/i18n';
+import { getPhotoStats } from '@/lib/photo-stats';
 
 // Frank #7243 Task 6: home page has the hero (globe + CTAs) +
 // one H2 section (Features) + footer. B3 commit 94faa4c also
@@ -34,6 +35,11 @@ export const metadata: Metadata = {
 // as before — three cards (time travel, life journey, auto
 export default async function Home() {
   const locale = await getLocale();
+  // Frank #0906 round-15: the ONE photo/place data source for the
+  // whole landing page. The hero count, the three feature-card
+  // demos and the globe's centre all read from this object, so the
+  // numbers on the page can no longer contradict each other.
+  const stats = await getPhotoStats();
   return (
     <>
       {/* Hero — globe + CTAs. Mobile: content-fit (HomeGallery's
@@ -55,33 +61,28 @@ export default async function Home() {
           landmark). Use a plain <div> here so <main> stays
           at the top level of the document outline. */}
       <div className="relative w-full lg:overflow-hidden">
-        <HomeGallery locale={locale} />
+        <HomeGallery locale={locale} stats={stats} />
       </div>
 
-      {/* Features — three core capability cards with inline
-          SVG demo mockups. Frank #0906 round-13 (P2 #9): the
-          old cards were emoji + title + one-line body, which
-          didn't sell the feature to a first-time visitor.
-          <FeaturesGrid /> renders a mini "screenshot" for each
-          feature (timeline + playhead + photo thumbs, globe
-          with 7 photo markers, 4-cell EXIF upload grid with
-          auto-tag chips) so visitors can see what the product
-          actually does without leaving the page. */}
+      {/* Features — three core capability cards. Each card shows a
+          live mock-up built from the SAME photo rows as the hero
+          (real photos, real counts, real dates) — no hard-coded
+          numbers, no colour-block stand-ins. */}
       <section
         id="features"
         aria-labelledby="features-heading"
-        className="mx-auto max-w-5xl px-6 py-16 sm:py-24"
+        className="mx-auto max-w-5xl px-6 py-12 sm:py-16"
       >
-        <p className="mb-2 text-xs tracking-[0.4em] text-black/70 dark:text-white/70 uppercase">
+        <p className="mb-2 text-xs tracking-[0.4em] text-black/70 dark:text-white/80 uppercase">
           {t(locale, 'features.eyebrow')}
         </p>
         <h2
           id="features-heading"
-          className="mb-10 text-3xl font-light text-black dark:text-white sm:text-4xl"
+          className="mb-8 text-3xl font-light text-black dark:text-white sm:text-4xl"
         >
           {t(locale, 'features.heading')}
         </h2>
-        <FeaturesGrid locale={locale} />
+        <FeaturesGrid locale={locale} stats={stats} />
       </section>
 
       {/* Footer — Frank #0906 round-13 (P1 #8): use the unified

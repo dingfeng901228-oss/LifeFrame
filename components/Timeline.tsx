@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { buildScale, MS_PER_DAY } from '@/lib/timeline-scale';
 
 type Photo = {
   key: string;
@@ -24,20 +25,12 @@ type Props = {
   shareState?: 'idle' | 'copied' | 'manual';
 };
 
-const MS_PER_DAY = 24 * 3600 * 1000;
-// §6 of the spec calls for the timeline to span the whole life of the
-// user. Left edge fixed at 1990-11 so it's stable across sessions —
-// Frank always knows what the leftmost end means. Right edge is "now",
-// recomputed per render so the track very slowly drifts forward as
-// time passes (negligible between refreshes, but technically right).
-const MIN_DATE = new Date('1990-11-01T00:00:00Z');
-
-// Frank #7292: timeline playback speed options. Days per real-
-// second at each speed. Default 1× ≈ 365 days/s = one year per
-// real-second — a 35-year photo life scrubs through in ~35s.
-// Tuned similarly to the TimeTravel modal speeds but exposed on
-// the inline timeline so play/pause/speed is always one click
-// away (no need to open the modal for casual time-skim).
+/** Frank #7292: timeline playback speed options. Days per real-
+    second at each speed. Default 1× ≈ 365 days/s = one year per
+    real-second — a 35-year photo life scrubs through in ~35s.
+    Tuned similarly to the TimeTravel modal speeds but exposed on
+    the inline timeline so play/pause/speed is always one click
+    away (no need to open the modal for casual time-skim). */
 const SPEED_OPTIONS: Array<{ label: string; daysPerSecond: number }> = [
   { label: '0.5×', daysPerSecond: 183 },
   { label: '1×', daysPerSecond: 365 },
@@ -48,16 +41,12 @@ const SPEED_OPTIONS: Array<{ label: string; daysPerSecond: number }> = [
 /**
  * Video-player-style progress bar Timeline.
  *
- * Single thin horizontal line spanning 1990-11 → now. Tiny vertical
- * marks on the bar indicate where photos exist (chapter markers).
- * A draggable knob (cyan dot) is the playhead. The cyan range overlay
- * is the ±windowDays/2 selection window. Hovering near a photo
- * triggers the existing thumbnail popup above the bar.
- *
- * Simpler than the previous design (which had year labels, an
- * elaborate handle with glow + ring + vertical line, and verbose
- * helper text). This matches what Frank asked for in #6980: "时间
- * 轨道改为一条线即可，类似播放器的进度条".
+ * Single thin horizontal line spanning the first photo year → now.
+ * Tiny vertical marks on the bar indicate where photos exist
+ * (chapter markers). A draggable knob (cyan dot) is the playhead,
+ * always visible, with the current date above it. The cyan range
+ * overlay is the ±windowDays/2 selection window. Hovering near a
+ * photo triggers the thumbnail popup above the bar.
  */
 export function Timeline({
   photos,
@@ -80,6 +69,10 @@ export function Timeline({
   const [speedIdx, setSpeedIdx] = useState(1);
   // Active rAF id so the cleanup can cancel the loop correctly.
   const rafRef = useRef<number | null>(null);
+  // The track's pixel width — used to thin the year labels so they
+  // never collide (Frank #0906 round-15: the old fixed 5-year step
+  // overlapped on a phone and left the right-hand years crowded).
+  const [trackWidth, setTrackWidth] = useState(0);
   // Mirror selectedDate so the rAF effect reads the current
   // value WITHOUT listing selectedDate in its deps — otherwise
   // every frame's onChange would restart the effect and drop
@@ -91,8 +84,22 @@ export function Timeline({
 
   // Right edge = now (recomputed per render — cheap)
   const maxDate = useMemo(() => new Date(), []);
-  const minDate = MIN_DATE;
-  const totalSpan = maxDate.getTime() - minDate.getTime();
+  // The scale: derived from the photos, so the track starts at the
+  // first year that actually has a photo and the empty years are
+  // compressed.
+  const scale = useMemo(() => buildScale(photos, maxDate), [photos, maxDate]);
+  const minDate = scale.minDate;
+
+  // Measure the track so the year labels can be thinned to fit.
+  useEffect(() => {
+    const el = trackRef.current;
+    if (!el) return;
+    const measure = () => setTrackWidth(el.clientWidth);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // ── Photo positions on the track ─────────────────────────────────
   // Each photo maps to a percentage along the track. Sort by
@@ -113,11 +120,10 @@ export function Timeline({
         const ts = p.taken_at || p.created_at;
         if (!ts) return null;
         const d = new Date(ts);
-        if (isNaN(d.getTime())) return null;
-        const pos = ((d.getTime() - minDate.getTime()) / totalSpan) * 100;
+        if (Number.isNaN(d.getTime())) return null;
         return {
           key: p.key,
-          pos,
+          pos: scale.positionFor(d),
           date: d,
           publicUrl: p.public_url,
           thumbnailUrl: p.thumbnail_url,
@@ -126,7 +132,7 @@ export function Timeline({
       })
       .filter((x): x is PhotoPos => x !== null)
       .sort((a, b) => a.pos - b.pos);
-  }, [photos, minDate, totalSpan]);
+  }, [photos, scale]);
 
   // Photos inside the selected window — these are the candidates for
   // the thumbnail popup above the track. Same window logic as the
@@ -142,24 +148,19 @@ export function Timeline({
   }, [photoPositions, selectedDate, windowDays]);
 
   const positionFor = useCallback(
-    (d: Date) =>
-      Math.max(
-        0,
-        Math.min(100, ((d.getTime() - minDate.getTime()) / totalSpan) * 100),
-      ),
-    [minDate, totalSpan],
+    (d: Date) => scale.positionFor(d),
+    [scale],
   );
 
   const dateFromClientX = useCallback(
     (clientX: number): Date | null => {
       if (!trackRef.current) return null;
       const rect = trackRef.current.getBoundingClientRect();
+      if (rect.width <= 0) return null;
       const x = (clientX - rect.left) / rect.width;
-      const t =
-        minDate.getTime() + Math.max(0, Math.min(1, x)) * totalSpan;
-      return new Date(t);
+      return scale.dateAt(Math.max(0, Math.min(1, x)) * 100);
     },
-    [minDate, totalSpan],
+    [scale],
   );
 
   // ── Drag-to-scrub (same pattern as Globe.tsx, no setPointerCapture) ──
@@ -286,74 +287,73 @@ export function Timeline({
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Frank #7243 round-3: year ticks, borrowed from OldMapsOnline /
-  // TimeMap. Their time slider carries explicit year marks, so you
-  // can *see* how time is distributed and jump straight to a year.
-  // LifeFrame's track only had the two end dates, which made the
-  // 35-year span feel like one undifferentiated line.
+  // ── Year ticks ──────────────────────────────────────────────────
+  // Frank #7243 round-3: year marks, borrowed from OldMapsOnline /
+  // TimeMap. Clicking a year jumps to it — landing on that year's
+  // earliest photo when there is one, so you never jump to an
+  // empty year.
   //
-  // Each tick jumps to the EARLIEST photo of that year when there
-  // is one (jumping to Jan 1 of an empty year lands on nothing),
-  // otherwise to Jan 1.
+  // Frank #0906 round-15: the marks are now the years that ACTUALLY
+  // have photos (the old fixed 5-year step printed 1995/2000/… for
+  // years with no photos at all, and the right-hand years ended up
+  // crowded). They are thinned to the measured pixel width so the
+  // labels never overlap.
   const yearTicks = useMemo(() => {
-    const startYear = minDate.getFullYear();
-    const endYear = maxDate.getFullYear();
-    const span = endYear - startYear;
-    // 5-year steps on a normal screen, 10-year on narrow ones so
-    // the labels never collide.
-    const step = span > 28 ? 5 : span > 12 ? 2 : 1;
-    const ticks: Array<{ year: number; pos: number; count: number }> = [];
-    for (let y = startYear; y <= endYear; y += step) {
-      const at = new Date(y, 0, 1);
-      const pos = ((at.getTime() - minDate.getTime()) / totalSpan) * 100;
-      if (pos < -1 || pos > 101) continue;
-      ticks.push({ year: y, pos: Math.max(0, Math.min(100, pos)), count: 0 });
+    const yearMap = new Map<number, number>();
+    for (const p of photos) {
+      const ts = p.taken_at || p.created_at;
+      if (!ts) continue;
+      const d = new Date(ts);
+      if (Number.isNaN(d.getTime())) continue;
+      const y = d.getFullYear();
+      yearMap.set(y, (yearMap.get(y) ?? 0) + 1);
     }
-    // Always land on the final year, even if the step skipped it.
-    // If the final year would sit on top of the previous tick
-    // (2025 → 2026 is only ~20 px apart), REPLACE that tick instead
-    // of adding a second one, so the labels never overlap.
-    const lastYear = endYear;
-    const lastPos = ((new Date(lastYear, 0, 1).getTime() - minDate.getTime()) / totalSpan) * 100;
-    const prev = ticks[ticks.length - 1];
-    if (!prev) {
-      ticks.push({ year: lastYear, pos: Math.max(0, Math.min(100, lastPos)), count: 0 });
-    } else if (lastPos - prev.pos < 4) {
-      ticks[ticks.length - 1] = {
-        year: lastYear,
-        pos: Math.max(0, Math.min(100, lastPos)),
-        count: 0,
-      };
-    } else {
-      ticks.push({ year: lastYear, pos: Math.max(0, Math.min(100, lastPos)), count: 0 });
+    return [...yearMap.entries()]
+      .map(([year, count]) => ({
+        year,
+        count,
+        pos: scale.positionFor(new Date(year, 0, 1)),
+      }))
+      .sort((a, b) => a.year - b.year);
+  }, [photos, scale]);
+
+  // Thin the ticks to the measured track width.
+  const visibleTicks = useMemo(() => {
+    if (yearTicks.length === 0) return [];
+    if (trackWidth <= 0) return [];
+    const minGapPx = 34;
+    const out = [yearTicks[0]];
+    for (let i = 1; i < yearTicks.length; i++) {
+      const last = out[out.length - 1];
+      const px = ((yearTicks[i].pos - last.pos) / 100) * trackWidth;
+      if (px >= minGapPx) out.push(yearTicks[i]);
     }
-    // Count the photos per tick year so the tooltip can say
-    // "1998 · 14 张照片".
-    for (const t of ticks) {
-      t.count = photos.filter((p) => {
-        if (!p.taken_at) return false;
-        const d = new Date(p.taken_at);
-        return !Number.isNaN(d.getTime()) && d.getFullYear() === t.year;
-      }).length;
+    const lastTick = yearTicks[yearTicks.length - 1];
+    if (out[out.length - 1] !== lastTick) {
+      const prev = out[out.length - 1];
+      const px = ((lastTick.pos - prev.pos) / 100) * trackWidth;
+      if (px < minGapPx && out.length > 1) out.pop();
+      out.push(lastTick);
     }
-    return ticks;
-  }, [minDate, maxDate, totalSpan, photos]);
+    return out;
+  }, [yearTicks, trackWidth]);
 
   const jumpToYear = useCallback(
     (year: number) => {
       setPlaying(false);
       const first = photos
         .filter((p) => {
-          if (!p.taken_at) return false;
-          const d = new Date(p.taken_at);
+          const ts = p.taken_at || p.created_at;
+          if (!ts) return false;
+          const d = new Date(ts);
           return !Number.isNaN(d.getTime()) && d.getFullYear() === year;
         })
         .sort(
           (a, b) =>
-            new Date(a.taken_at as string).getTime() -
-            new Date(b.taken_at as string).getTime(),
+            new Date(a.taken_at || a.created_at).getTime() -
+            new Date(b.taken_at || b.created_at).getTime(),
         )[0];
-      onChange(first ? new Date(first.taken_at as string) : new Date(year, 0, 1));
+      onChange(first ? new Date(first.taken_at || first.created_at) : new Date(year, 0, 1));
     },
     [photos, onChange],
   );
@@ -367,22 +367,39 @@ export function Timeline({
         ? '📋 请手动复制'
         : '🔗 分享';
 
-  const handlePos = selectedDate ? positionFor(selectedDate) : null;
-  const halfWindowPct = (windowDays / 2 / (totalSpan / MS_PER_DAY)) * 100;
-  const rangeStart =
-    handlePos !== null ? Math.max(0, handlePos - halfWindowPct) : null;
-  const rangeWidth =
-    handlePos !== null ? Math.min(100, halfWindowPct * 2) : null;
+  // The playhead is ALWAYS visible: with a selection it sits on
+  // that date, otherwise it rests on the newest photo (Frank
+  // #0906 round-15: the handle used to be invisible until you
+  // dragged something onto the track).
+  const handleDate = useMemo(() => {
+    if (selectedDate) return selectedDate;
+    const newest = photoPositions[photoPositions.length - 1];
+    return newest ? newest.date : maxDate;
+  }, [selectedDate, photoPositions, maxDate]);
+  const handlePos = positionFor(handleDate);
+
+  const rangeStart = useMemo(() => {
+    if (!selectedDate) return null;
+    const half = (windowDays / 2) * MS_PER_DAY;
+    return positionFor(new Date(selectedDate.getTime() - half));
+  }, [selectedDate, windowDays, positionFor]);
+  const rangeWidth = useMemo(() => {
+    if (!selectedDate) return null;
+    const half = (windowDays / 2) * MS_PER_DAY;
+    const a = positionFor(new Date(selectedDate.getTime() - half));
+    const b = positionFor(new Date(selectedDate.getTime() + half));
+    return Math.max(0.4, b - a);
+  }, [selectedDate, windowDays, positionFor]);
 
   return (
     <div className="mx-auto w-full max-w-3xl px-6 pb-2 pt-1">
       {/* Compact header — just the date range. No instructions, no
           "筛选：..." copy. The interaction is self-evident once you
           touch the bar. */}
-      <div className="mb-1.5 flex items-center justify-between gap-2 text-[10px] tracking-wider text-black/60 dark:text-white/55 tabular-nums">
+      <div className="mb-1.5 flex items-center justify-between gap-2 text-[11px] tracking-wider text-black/75 dark:text-white/75 tabular-nums">
         <span className="shrink-0">{formatShort(minDate)}</span>
         {selectedDate && (
-          <span className="shrink-0 text-cyan-600 dark:text-cyan-300/80">
+          <span className="shrink-0 text-cyan-600 dark:text-cyan-300/90">
             {formatShort(selectedDate)} ± {Math.round(windowDays / 2)} 天
           </span>
         )}
@@ -405,7 +422,7 @@ export function Timeline({
               // z-30 + a solid background: the scrub thumbnail popup
               // floats above the bar at z-20 and would otherwise sit
               // on top of this button.
-              className="relative z-30 inline-flex min-h-[28px] items-center gap-1 rounded-full border border-black/20 bg-white/90 px-2 text-[10px] tracking-normal backdrop-blur-sm transition hover:bg-black/5 dark:border-white/20 dark:bg-black/80 dark:hover:bg-white/10"
+              className="relative z-30 inline-flex min-h-[28px] items-center gap-1 rounded-full border border-black/25 bg-white/90 px-2 text-[10px] tracking-normal backdrop-blur-sm transition hover:bg-black/5 dark:border-white/25 dark:bg-black/80 dark:hover:bg-white/10"
             >
               {shareLabel}
             </button>
@@ -413,10 +430,12 @@ export function Timeline({
         </div>
       </div>
 
-      <div className="relative">
+      {/* mt-6 leaves room for the playhead's date label, which
+          floats above the knob. */}
+      <div className="relative mt-6">
         {/* Thumbnail popup — floats above the bar at the playhead's
-            position, only when scrubbing near photos. Same UX as the
-            previous design. */}
+            position, only when scrubbing near photos. Same UX as
+            the previous design. */}
         {selectedDate &&
           handlePos !== null &&
           visiblePositions.length > 0 && (
@@ -440,7 +459,7 @@ export function Timeline({
                   />
                 ))}
                 {visiblePositions.length > 3 && (
-                  <div className="flex h-12 w-12 items-center justify-center rounded bg-white/95 dark:bg-black/60 text-xs text-black/65 dark:text-white/70 ring-1 ring-black/10 dark:ring-white/10">
+                  <div className="flex h-12 w-12 items-center justify-center rounded bg-white/95 dark:bg-black/60 text-xs text-black/75 dark:text-white/80 ring-1 ring-black/10 dark:ring-white/10">
                     +{visiblePositions.length - 3}
                   </div>
                 )}
@@ -465,7 +484,7 @@ export function Timeline({
                 marginBottom: '8px',
               }}
             >
-              <div className="rounded border border-black/15 bg-white/95 px-2 py-1 text-xs tabular-nums text-black shadow-lg backdrop-blur-sm dark:border-white/20 dark:bg-black/90 dark:text-white">
+              <div className="rounded border border-black/20 bg-white/95 px-2 py-1 text-xs tabular-nums text-black shadow-lg backdrop-blur-sm dark:border-white/25 dark:bg-black/90 dark:text-white">
                 {formatShort(hoverDate)}
               </div>
             </div>
@@ -491,15 +510,15 @@ export function Timeline({
           aria-label="时间轴 — 点击或拖动选择日期"
           aria-valuemin={minDate.getTime()}
           aria-valuemax={maxDate.getTime()}
-          aria-valuenow={selectedDate ? selectedDate.getTime() : minDate.getTime()}
+          aria-valuenow={selectedDate ? selectedDate.getTime() : handleDate.getTime()}
           aria-valuetext={
-            selectedDate ? formatShort(selectedDate) : '未选择'
+            selectedDate ? formatShort(selectedDate) : formatShort(handleDate)
           }
           tabIndex={0}
-          className={`relative h-3 touch-none select-none rounded-full bg-black/10 dark:bg-white/10 transition sm:h-1.5 ${
+          className={`relative h-3 touch-none select-none rounded-full bg-black/15 dark:bg-white/15 transition sm:h-1.5 ${
             dragging
-              ? 'cursor-grabbing bg-black/15 dark:bg-white/15'
-              : 'cursor-pointer hover:bg-black/15 dark:hover:bg-white/15'
+              ? 'cursor-grabbing bg-black/20 dark:bg-white/20'
+              : 'cursor-pointer hover:bg-black/20 dark:hover:bg-white/20'
           }`}
         >
           {/* Photo keyframe marks — chapter-marker style vertical
@@ -510,7 +529,7 @@ export function Timeline({
           {photoPositions.map((p) => (
             <div
               key={`mark-${p.key}`}
-              className="pointer-events-none absolute h-2 w-0.5 -translate-x-1/2 rounded-sm bg-cyan-600/80 dark:bg-cyan-400/70"
+              className="pointer-events-none absolute h-2 w-0.5 -translate-x-1/2 rounded-sm bg-cyan-500/90 dark:bg-cyan-300/80"
               style={{
                 left: `${p.pos}%`,
                 top: '-2px',
@@ -530,33 +549,41 @@ export function Timeline({
             />
           )}
 
-          {/* Playhead — single small cyan circle on the bar. Grows
-              slightly on hover/drag for tactile feedback. pointer-
-              events: none so the wrapper's onPointerDown handles
-              the drag instead of this element swallowing it. */}
-          {handlePos !== null && (
-            <div
-              className={`pointer-events-none absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-500 dark:bg-cyan-400 shadow-[0_0_6px_rgba(8,145,178,0.5)] dark:shadow-[0_0_6px_rgba(103,232,249,0.7)] ring-2 ring-white/40 dark:ring-black/40 transition-transform ${
-                dragging ? 'scale-125' : 'scale-100'
-              }`}
-              style={{ left: `${handlePos}%` }}
-            />
-          )}
+          {/* Playhead — a clearly visible cyan knob. pointer-events:
+              none so the wrapper's onPointerDown handles the drag
+              instead of this element swallowing it. */}
+          <div
+            className={`pointer-events-none absolute top-[6px] z-10 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-500 dark:bg-cyan-400 shadow-[0_0_10px_rgba(8,145,178,0.75)] dark:shadow-[0_0_10px_rgba(103,232,249,0.85)] ring-2 ring-white/70 dark:ring-black/60 transition-transform ${
+              dragging ? 'scale-125' : 'scale-100'
+            }`}
+            style={{ left: `${handlePos}%` }}
+          />
         </div>
 
-        {/* Frank #7243 round-3: year tick row, borrowed from
-            OldMapsOnline / TimeMap. Their slider shows explicit year
-            marks; LifeFrame's track only had the two end dates, which
-            made a 35-year span read as one flat line. Clicking a year
-            jumps to it — landing on that year's earliest photo when
-            there is one, so you never jump to an empty year.
+        {/* The handle's date label — Frank #0906 round-15. It sits
+            NEXT TO the knob (never above it, where it collided with
+            the hover tooltip and the thumbnail popup) and flips to
+            the other side near the right edge so it can never run
+            off the track. */}
+        <div
+          className="pointer-events-none absolute top-[6px] z-20 -translate-y-1/2"
+          style={{
+            left: `${handlePos}%`,
+            transform:
+              handlePos > 80
+                ? 'translate(calc(-100% - 12px), -50%)'
+                : 'translate(12px, -50%)',
+          }}
+        >
+          <span className="whitespace-nowrap rounded-full border border-cyan-400/70 bg-black/90 px-2 py-0.5 text-[10px] leading-none tabular-nums text-cyan-200">
+            {formatShort(handleDate)}
+          </span>
+        </div>
 
-            The row is IN FLOW (not absolute): an absolutely
-            positioned row doesn't reserve space, so the playback
-            controls below it would slide up and collide with the
-            year labels. */}
-        <div className="relative mt-1 h-4">
-          {yearTicks.map((t) => {
+        {/* Year tick row — the years the archive actually has, kept
+            apart by the measured track width. */}
+        <div className="relative mt-1.5 h-5">
+          {visibleTicks.map((t) => {
             // Keep the first and last labels inside the track instead
             // of letting them hang off both ends.
             const align =
@@ -578,21 +605,20 @@ export function Timeline({
                 className={`group absolute top-0 flex flex-col items-center ${align}`}
               >
                 <span
-                  className={`block h-1.5 w-px transition ${
+                  className={`block h-2 w-px transition ${
                     isActive
                       ? 'bg-cyan-500 dark:bg-cyan-400'
-                      : 'bg-black/25 group-hover:bg-cyan-500 dark:bg-white/25 dark:group-hover:bg-cyan-400'
+                      : 'bg-black/40 group-hover:bg-cyan-500 dark:bg-white/50 dark:group-hover:bg-cyan-400'
                   }`}
                 />
                 <span
-                  className={`mt-0.5 block text-[9px] leading-none tabular-nums transition ${
+                  className={`mt-0.5 block text-[11px] leading-none tabular-nums transition ${
                     isActive
-                      ? 'font-medium text-cyan-600 dark:text-cyan-300'
-                      : // Frank #7243 round-3: axe needs 4.5:1 even at
-                        // 9 px, so the inactive labels use the same
-                        // 60/55 opacity as the timeline header (45%
-                        // failed the contrast check).
-                        'text-black/60 group-hover:text-cyan-600 dark:text-white/55 dark:group-hover:text-cyan-300'
+                      ? 'font-medium text-cyan-500 dark:text-cyan-300'
+                      : // Frank #0906 round-15: the year labels were
+                        // 9 px at 55 % opacity — effectively
+                        // invisible on black. Bigger and brighter.
+                        'text-black/80 group-hover:text-cyan-600 dark:text-white/80 dark:group-hover:text-cyan-300'
                   }`}
                 >
                   {t.year}
@@ -609,7 +635,7 @@ export function Timeline({
           speed buttons for screen readers. Space toggles
           play / pause from anywhere; the buttons here are for
           mouse / touch. */}
-      <div className="mt-1.5 flex items-center justify-center gap-1.5 text-xs text-black/65 dark:text-white/65 sm:gap-2">
+      <div className="mt-1 flex items-center justify-center gap-1.5 text-xs text-black/80 dark:text-white/80 sm:gap-2">
         <button
           type="button"
           onClick={() => {
@@ -618,7 +644,7 @@ export function Timeline({
           }}
           aria-label="回到起点"
           title="回到起点"
-          className="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full border border-black/20 px-3 text-base transition hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/5"
+          className="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full border border-black/25 px-3 text-base transition hover:bg-black/5 dark:border-white/25 dark:hover:bg-white/5"
         >
           ⏮
         </button>
@@ -639,11 +665,11 @@ export function Timeline({
           }}
           aria-label="跳到最新"
           title="跳到最新"
-          className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-black/20 px-3 text-base transition hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/5"
+          className="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full border border-black/25 px-3 text-base transition hover:bg-black/5 dark:border-white/25 dark:hover:bg-white/5"
         >
           ⏭
         </button>
-        <div className="ml-1 flex shrink-0 gap-0.5 rounded-full border border-black/20 p-0.5 dark:border-white/20">
+        <div className="ml-1 flex shrink-0 gap-0.5 rounded-full border border-black/25 p-0.5 dark:border-white/25">
           {SPEED_OPTIONS.map((s, i) => (
             <button
               key={s.label}
@@ -653,7 +679,7 @@ export function Timeline({
               className={`inline-flex min-h-[40px] min-w-[40px] items-center justify-center rounded-full px-2 text-xs transition ${
                 speedIdx === i
                   ? 'bg-black text-white dark:bg-white dark:text-black'
-                  : 'text-black/55 hover:text-black dark:text-white/55 dark:hover:text-white'
+                  : 'text-black/75 hover:text-black dark:text-white/80 dark:hover:text-white'
               }`}
             >
               {s.label}
@@ -670,7 +696,7 @@ export function Timeline({
             type="button"
             onChange={() => onChange(null)}
             onClick={() => onChange(null)}
-            className="text-cyan-600 dark:text-cyan-300/70 transition hover:text-cyan-700 dark:hover:text-cyan-300"
+            className="text-cyan-600 dark:text-cyan-300/90 transition hover:text-cyan-500 dark:hover:text-cyan-300"
           >
             ✕ 清除筛选
           </button>

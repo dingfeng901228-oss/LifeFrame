@@ -15,6 +15,7 @@ import { SearchBox } from '@/components/SearchBox';
 import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
 import { photoImageUrl } from '@/lib/photo-url';
 import { t, type Locale } from '@/lib/i18n';
+import type { PhotoStats } from '@/lib/photo-stats';
 
 // Frank #7203 #3: ±30 天 → ±15 天. The constant is the total
 // window size; Timeline.tsx halves it for the cyan range overlay
@@ -23,7 +24,19 @@ import { t, type Locale } from '@/lib/i18n';
 const TIMELINE_WINDOW_DAYS = 30;
 const MS_PER_DAY = 24 * 3600 * 1000;
 
-export function HomeGallery({ locale }: { locale: Locale }) {
+export function HomeGallery({
+  locale,
+  stats,
+}: {
+  locale: Locale;
+  /**
+   * Frank #0906 round-15: the archive totals + the globe's centre,
+   * read on the server from the SAME query the feature cards use.
+   * The hero count therefore matches the numbers printed inside
+   * the three demo cards.
+   */
+  stats: PhotoStats;
+}) {
   const [photos, setPhotos] = useState<PhotoRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -343,6 +356,32 @@ export function HomeGallery({ locale }: { locale: Locale }) {
 
   const visibleCount = visiblePhotos.length;
 
+  // Frank #0906 round-15: the globe faces the archive. The centre
+  // comes from the shared stats (server-side, same rows as the
+  // feature cards), so the first paint already shows the photos'
+  // hemisphere instead of the Atlantic.
+  const globeCenter = useMemo<[number, number]>(
+    () => [stats.center[0], stats.center[1]],
+    [stats.center],
+  );
+  const totalPhotos = stats.totalPhotos;
+
+  // The hero's count line. The archive TOTAL comes from the
+  // server-side stats (no "加载中…" flash, and it is the same
+  // number the feature cards print), while the filtered counts
+  // need the client-side rows, so they stay behind the loading
+  // state.
+  const countLine =
+    loading && (trimmedQuery || selectedDate)
+      ? t(locale, 'hero.subtitle.loading')
+      : totalPhotos === 0
+        ? t(locale, 'hero.subtitle.empty')
+        : trimmedQuery
+          ? `${visibleCount} 张匹配 "${searchQuery.trim()}" · 共 ${totalPhotos} 张`
+          : selectedDate
+            ? `${visibleCount} 张照片在 ${formatMonth(selectedDate)} ± ${TIMELINE_WINDOW_DAYS / 2} 天窗口内`
+            : t(locale, 'hero.subtitle.countNoFilter', { count: totalPhotos });
+
   // ── On This Day (§19 of 要件定義書) ─────────────────────────────
   // Photos taken on today's month-day in any year. Grouped by year
   // for the modal. Returns [] when no photos match — the trigger
@@ -500,26 +539,19 @@ export function HomeGallery({ locale }: { locale: Locale }) {
         <div className="relative h-[44vh] min-h-[300px] w-full flex-shrink-0 overflow-hidden">
           <Globe
             markers={markers}
+            center={globeCenter}
             onMarkerSelect={handleMarkerSelect}
             onClusterClick={handleClusterClick}
           />
           <div className="pointer-events-none absolute inset-x-0 top-0 z-10 px-4 pt-4 pb-2 text-center">
-            <p className="text-xs tracking-[0.4em] text-black/70 uppercase drop-shadow-sm dark:text-white/70">
+            <p className="text-xs tracking-[0.4em] text-black/80 uppercase drop-shadow-sm dark:text-white/85">
               {t(locale, 'hero.japaneseSubtitle')}
             </p>
             <h1 className="mt-2 text-2xl font-light leading-snug text-black drop-shadow-sm dark:text-white sm:text-3xl">
               {t(locale, 'hero.title')}
             </h1>
-            <p className="mx-auto mt-2 max-w-md text-sm text-black/70 dark:text-white/70 drop-shadow-sm">
-              {loading
-                ? t(locale, 'hero.subtitle.loading')
-                : photos.length === 0
-                  ? t(locale, 'hero.subtitle.empty')
-                  : trimmedQuery
-                    ? `${visibleCount} 张匹配 "${searchQuery.trim()}" · 共 ${photos.length} 张`
-                    : selectedDate
-                      ? `${visibleCount} 张照片在 ${formatMonth(selectedDate)} ± ${TIMELINE_WINDOW_DAYS / 2} 天窗口内`
-                      : t(locale, 'hero.subtitle.countNoFilter', { count: photos.length })}
+            <p className="mx-auto mt-2 max-w-md text-sm text-black/85 dark:text-white/85 drop-shadow-sm">
+              {countLine}
             </p>
           </div>
         
@@ -685,22 +717,14 @@ export function HomeGallery({ locale }: { locale: Locale }) {
             — this was the iPad / narrow-desktop bug where the
             enlarged earth drew over the title. */}
         <div className="relative z-10 flex-shrink-0 px-6 pt-6 pb-3 text-center">
-                  <p className="text-[11px] tracking-[0.4em] text-black/70 uppercase drop-shadow-sm dark:text-white/70">
-                    {t(locale, 'hero.japaneseSubtitle')}
-                  </p>
-                  <h1 className="mt-2 text-2xl font-light text-black dark:text-white sm:text-3xl lg:text-4xl">
+          <p className="text-[11px] tracking-[0.4em] text-black/80 uppercase drop-shadow-sm dark:text-white/85">
+            {t(locale, 'hero.japaneseSubtitle')}
+          </p>
+          <h1 className="mt-2 text-2xl font-light text-black dark:text-white sm:text-3xl lg:text-4xl">
             {t(locale, 'hero.title')}
           </h1>
-          <p className="mx-auto mt-3 max-w-md text-sm text-black/70 dark:text-white/70">
-            {loading
-              ? t(locale, 'hero.subtitle.loading')
-              : photos.length === 0
-                ? t(locale, 'hero.subtitle.empty')
-                : trimmedQuery
-                  ? `${visibleCount} 张匹配 "${searchQuery.trim()}" · 共 ${photos.length} 张`
-                  : selectedDate
-                    ? `${visibleCount} 张照片在 ${formatMonth(selectedDate)} ± ${TIMELINE_WINDOW_DAYS / 2} 天窗口内`
-                    : t(locale, 'hero.subtitle.countNoFilter', { count: photos.length })}
+          <p className="mx-auto mt-3 max-w-md text-sm text-black/85 dark:text-white/85">
+            {countLine}
           </p>
           {/* Frank #7243 Task 5: 桌面端 hero 同样在「未登录 + 没照片」
               状态显示一个 cyan 主按钮（+ 描边次按钮），让首屏转化
@@ -734,9 +758,10 @@ export function HomeGallery({ locale }: { locale: Locale }) {
             desktop widths (iPad landscape 1024px = lg) would
             draw over the hero title above. The hero text is
             z-10 so it stays readable in any case. */}
-        <div className="relative mx-auto h-[55vh] min-h-[420px] w-full max-w-[1400px] flex-1 overflow-hidden">
+        <div className="relative mx-auto h-[46vh] min-h-[360px] max-h-[520px] w-full max-w-[1060px] overflow-hidden">
           <Globe
             markers={markers}
+            center={globeCenter}
             onMarkerSelect={handleMarkerSelect}
             onClusterClick={handleClusterClick}
           />

@@ -126,8 +126,8 @@ const dict: Dict = {
     ja: '残り {count} 枚の一致写真は地球儀マーカーに表示中',
   },
   'hero.onThisDay': {
-    zh: '📅 历史上这一天',
-    ja: '📅 历史上的この日',
+    zh: '历史上这一天',
+    ja: '历史上的この日',
   },
   // Frank #7243 round-4: the "On This Day" card. OldMapsOnline made
   // this a headline feature ("a daily time machine"); LifeFrame had
@@ -263,12 +263,12 @@ const dict: Dict = {
     ja: '{year}年{month}月{day}日の写真：{name}',
   },
   'hero.timeTravel': {
-    zh: '▶ 时间旅行 · Explore My Life',
-    ja: '▶ タイムトラベル · Explore My Life',
+    zh: '时间旅行 · Explore My Life',
+    ja: 'タイムトラベル · Explore My Life',
   },
   'hero.lifeJourney': {
-    zh: '🌏 人生足迹 · Life Journey',
-    ja: '🌏 人生の軌跡 · Life Journey',
+    zh: '人生足迹 · Life Journey',
+    ja: '人生の軌跡 · Life Journey',
   },
   'hero.fetchError': {
     zh: '加载照片失败：',
@@ -312,20 +312,20 @@ const dict: Dict = {
     zh: '读取拍摄时间与地点，减少手动分类。',
     ja: '撮影日時と場所を読み取って、手動の分類を減らす。',
   },
-  // Frank #0906 round-13 (P2 #9): small label rendered in the
-  // top-right corner of each feature card's demo frame. Helps
-  // visitors recognize "this is a screenshot, not a button".
-  'features.timeTravel.demoLabel': {
-    zh: 'DEMO',
-    ja: 'DEMO',
+  // Frank #0906 round-15: the cards used to carry a "DEMO" badge.
+  // They now carry REAL numbers read from the archive instead, so
+  // the mock-ups can never contradict the hero copy.
+  'features.demo.summary': {
+    zh: '{count} 张 · {places} 个地点',
+    ja: '{count} 枚 · {places} 地点',
   },
-  'features.lifeJourney.demoLabel': {
-    zh: 'DEMO',
-    ja: 'DEMO',
+  'features.demo.exif': {
+    zh: 'EXIF + GPS',
+    ja: 'EXIF + GPS',
   },
-  'features.autoOrganize.demoLabel': {
-    zh: 'DEMO',
-    ja: 'DEMO',
+  'features.demo.exifNote': {
+    zh: '自动读取 EXIF 拍摄时间 + GPS + 相机',
+    ja: 'EXIF の撮影日時・GPS・カメラを自動読み取り',
   },
 
   // ─── Footer (app/page.tsx) ───────────────────────────────────

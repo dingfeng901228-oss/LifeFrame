@@ -123,7 +123,14 @@ export function OnThisDayCard({
 
   return (
     <section
-      aria-label={t(locale, 'onThisDay.title')}
+      // Frank #0906 round-15: the accessible name was hard-coded to
+      // "历史上的今天" while the card can show "最近的记录" — the
+      // region name must match the title the user actually sees.
+      aria-label={
+        mode === 'onThisDay'
+          ? t(locale, 'onThisDay.title')
+          : t(locale, 'onThisDay.recentTitle')
+      }
       className={
         compact
           ? 'w-full rounded-xl border border-cyan-500/25 bg-white/75 px-3 py-2 backdrop-blur-md dark:border-cyan-400/20 dark:bg-black/55'

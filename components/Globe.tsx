@@ -20,8 +20,26 @@ export type GlobeMarker = {
   location: [number, number];
 };
 
+type GlobeCluster = {
+  i: number;
+  cx: number;
+  cy: number;
+  count: number;
+  indices: number[];
+};
+
 type Props = {
   markers?: GlobeMarker[];
+  /**
+   * Frank #0906 round-15: the geographic centre of the archive as
+   * [lng, lat]. The orthographic projection is rotated to this
+   * point, so the sphere FACES the photos instead of the Atlantic.
+   * Before this the projection was hard-wired to rotate([0, 0]),
+   * which put a China/Japan archive behind the globe — the page
+   * said "N photos lit up the map" while showing a planet with no
+   * photo markers on it.
+   */
+  center?: [number, number];
   onMarkerSelect?: (index: number) => void;
   // Called when the user clicks a multi-photo cluster. The argument
   // is the list of marker indices that fall inside the cluster
@@ -79,7 +97,12 @@ type Size = { w: number; h: number };
  * together — the previous version had a fixed ocean radius which
  * meant the sphere "grew" past its outline when you scrolled in.
  */
-function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {}) {
+function GlobeImpl({
+  markers = [],
+  center,
+  onMarkerSelect,
+  onClusterClick,
+}: Props = {}) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   // Start at 0×0, NOT 800×800. The old placeholder made the
   // initial-scale effect compute minDim from a viewport that
@@ -110,7 +133,11 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
   // path, the auto-rotation runs at 60 fps without any React
   // re-render, and the country paths are computed exactly once
   // at the BASE_SCALE used to build the static SVG.
-  const globeRotationRef = useRef<[number, number]>([0, -22]);
+  // Frank #0906 round-15: the initial rotation is the identity.
+  // The visible hemisphere is chosen by the PROJECTION's rotate()
+  // (see below), not by this in-plane spin — the spin only rolls the
+  // map around the disc, exactly like a globe on its axis.
+  const globeRotationRef = useRef<[number, number]>([0, 0]);
   const zoomLayerRef = useRef<SVGGElement | null>(null);
   // Tracks whether the globe has been fitted to the viewport yet.
   // The fit must happen exactly once, on the first real
@@ -258,9 +285,13 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
     const minDim = Math.min(size.w, size.h);
     // The earth's on-screen diameter is ~1.989 × scale (the ocean
     // circle is r = BASE_SCALE - 2 = 358 px in viewBox units, and
-    // the viewBox maps 1 unit to 1 px). So `minDim * 0.50` makes
-    // the globe exactly fill the smaller viewport axis.
-    const initialScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, minDim * 0.5));
+    // the viewBox maps 1 unit to 1 px). `minDim * 0.50` made the
+    // globe EXACTLY fill the smaller axis, so the rim was shaved
+    // off by the stage's overflow-hidden — the sphere read as a
+    // map cropped flat at the top and bottom. 0.46 leaves a ~4 %
+    // margin on every side: the whole sphere + its outline is
+    // visible.
+    const initialScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, minDim * 0.46));
     fitScaleRef.current = initialScale;
     globeScaleRef.current = initialScale;
     // Apply the fitted scale to the zoom-layer. useLayoutEffect
@@ -282,6 +313,35 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
     initialFitDoneRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [size.w, size.h]);
+
+  // ── Cluster badge elements ─────────────────────────────────────
+  // Frank #0906 round-15: the count badge lives INSIDE the spinning
+  // <g>, so its number used to rotate with the map (and read
+  // upside-down half the time). The counter-rotation below keeps
+  // every number level. The elements are cached in a ref so the
+  // raf loop can write the transform directly — no React render.
+  const clusterEls = useRef<Map<number, SVGGElement>>(new Map());
+  // The cluster list is mirrored into a ref so the raf loop (which
+  // is declared before the cluster memo) can read it.
+  const clustersRef = useRef<GlobeCluster[]>([]);
+
+  // Write the counter-rotated transform of every badge. Called from
+  // the raf loop (every frame) and from an effect whenever React
+  // re-renders the clusters.
+  const applyClusterTransforms = useCallback((lambda: number) => {
+    const els = clusterEls.current;
+    const list = clustersRef.current;
+    for (let k = 0; k < list.length; k++) {
+      const c = list[k];
+      const el = els.get(c.i);
+      if (el) {
+        el.setAttribute(
+          'transform',
+          `translate(${c.cx},${c.cy}) rotate(${lambda})`,
+        );
+      }
+    }
+  }, []);
 
   // ── Auto-rotation via requestAnimationFrame ─────────────────────
   // Frank #7243 review: this no longer calls setState. It mutates
@@ -318,12 +378,16 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
           'transform',
           `rotate(${-nl}) scale(${visual})`,
         );
+        // Keep every cluster badge LEVEL: the parent <g> spins by
+        // -nl, so the badge counter-rotates by +nl around its own
+        // centre. Written straight to the DOM (no React render).
+        applyClusterTransforms(nl);
       }
       raf = requestAnimationFrame(step);
     };
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
-  }, [autoRotate]);
+  }, [autoRotate, applyClusterTransforms]);
 
   // ── Projection + path generator ────────────────────────────────
   // Frank #7243 review: the projection now uses a STATIC rotation
@@ -338,14 +402,23 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
   // (BASE_SCALE is declared at module top — used here for the
   // projection; visual scale changes go through the zoom-layer
   // transform below.)
+  // The globe's centre point. Keyed by a string so the memo does
+  // not re-run when the parent re-renders with a new array literal.
+  const centerKey = `${(center?.[0] ?? 0).toFixed(2)},${(center?.[1] ?? 0).toFixed(2)}`;
   const projection = useMemo(() => {
+    const [lng, lat] = centerKey.split(',').map(Number);
     return geoOrthographic()
-      .rotate([0, 0])
+      // d3 rotates the GLOBE, so the angles are negated: with
+      // rotate([-lng, -lat]) the point (lng, lat) lands at the
+      // centre of the disc. (With the positive sign the archive
+      // ended up on the far side of the sphere, squeezed against
+      // the limb.)
+      .rotate([-lng, -lat])
       .scale(BASE_SCALE)
       .translate([0, 0])
       .clipAngle(90)
       .precision(0.5);
-  }, []); // empty deps: build once
+  }, [centerKey]);
 
   const pathFn = useMemo(() => geoPath(projection), [projection]);
 
@@ -397,8 +470,26 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
   // ── Projected photo markers (drop ones on the back hemisphere) ──
   const projectedMarkers = useMemo(() => {
     const out: { i: number; x: number; y: number }[] = [];
+    // d3's orthographic projection does NOT return null for a point
+    // on the far side of the sphere — it happily projects it onto
+    // the visible disc, where it lands on the wrong piece of land.
+    // Frank #0906 round-15: the globe now faces the archive, so
+    // this only matters for photos from the other side of the
+    // planet; those are dropped instead of floating over the
+    // wrong continent.
+    const [rotLng, rotLat] = projection.rotate();
+    // The disc is centred on the NEGATED rotation.
+    const centerLng = -rotLng;
+    const centerLat = -rotLat;
+    const toRad = Math.PI / 180;
+    const sinLat0 = Math.sin(centerLat * toRad);
+    const cosLat0 = Math.cos(centerLat * toRad);
     for (let i = 0; i < markers.length; i++) {
       const [lat, lng] = markers[i].location;
+      const cosC =
+        Math.sin(lat * toRad) * sinLat0 +
+        Math.cos(lat * toRad) * cosLat0 * Math.cos((lng - centerLng) * toRad);
+      if (cosC <= 0) continue;
       const xy = projection([lng, lat]);
       if (xy) out.push({ i, x: xy[0], y: xy[1] });
     }
@@ -413,16 +504,14 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
   // individual dots; multi-marker clusters render as a circle with a
   // count. Threshold is in screen px, not degrees — it works
   // across the full zoom range because the projection is pixel-based.
-  const CLUSTER_PX = 28;
+  // Frank #0906 round-15: 28 viewBox units put two neighbouring
+  // cities' badges on top of each other on screen (the badge is
+  // ~15 screen px wide at the default zoom). 34 keeps the clusters
+  // distinct without letting the badges collide.
+  const CLUSTER_PX = 34;
   const clusters = useMemo(() => {
     const used = new Set<number>();
-    const out: Array<{
-      i: number;
-      cx: number;
-      cy: number;
-      count: number;
-      indices: number[];
-    }> = [];
+    const out: GlobeCluster[] = [];
     const thresholdSq = CLUSTER_PX * CLUSTER_PX;
     for (const seed of projectedMarkers) {
       if (used.has(seed.i)) continue;
@@ -451,6 +540,15 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
     }
     return out;
   }, [projectedMarkers]);
+
+  // Frank #0906 round-15: keep the ref in sync and re-apply the
+  // counter-rotation after React re-renders the cluster list (a
+  // re-render resets the transform attribute to the plain
+  // translate, which would tilt the numbers again).
+  useEffect(() => {
+    clustersRef.current = clusters;
+    applyClusterTransforms(globeRotationRef.current[0]);
+  }, [clusters, applyClusterTransforms]);
 
   // Cluster click — we no longer auto-zoom on cluster click, because
   // that hid the photos behind a generic "3" badge. Instead we hand
@@ -849,11 +947,18 @@ function GlobeImpl({ markers = [], onMarkerSelect, onClusterClick }: Props = {})
                   </g>
                 );
               }
-              // Multi-marker cluster
-              const r = Math.min(14 + c.count * 1.5, 36);
+              // Multi-marker cluster. The radius is capped so the
+              // badge (and its number) can never reach past the
+              // sphere's outline and get shaved by the stage's
+              // overflow-hidden.
+              const r = Math.min(13 + c.count * 1.2, 28);
               return (
                 <g
                   key={`c-${c.i}`}
+                  ref={(el) => {
+                    if (el) clusterEls.current.set(c.i, el);
+                    else clusterEls.current.delete(c.i);
+                  }}
                   transform={`translate(${c.cx}, ${c.cy})`}
                   style={{ cursor: 'pointer' }}
                   onClick={() => handleClusterClick(c.indices)}
